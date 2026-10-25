@@ -956,3 +956,26 @@ class ExportTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.content.startswith(b"%PDF"))
         self.assertGreater(len(resp.content), 5000)
+
+    def test_query_period_wins_over_url_slug(self):
+        company = _company()
+        account = _account(company)
+        _login(self.client, company)
+        jan = models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+            closed=True,
+        )
+        feb = models.Period.objects.create(
+            account=account,
+            start=date(2026, 2, 1),
+            end=date(2026, 2, 28),
+            opening_balance_cents=0,
+        )
+
+        html = self.client.get(f"/fechamento/{jan.pk}/").content.decode()
+        self.assertIn("01/2026", html)
+        html = self.client.get(f"/fechamento/{jan.pk}/?periodo={feb.pk}").content.decode()
+        self.assertIn("02/2026", html)

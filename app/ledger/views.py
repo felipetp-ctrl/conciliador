@@ -78,7 +78,7 @@ def _resolve_period(
     if conta is None:
         return None
     qs = models.Period.objects.filter(account=conta)
-    wanted = slug or request.GET.get("periodo")
+    wanted = request.GET.get("periodo") or slug
     if wanted and wanted != "atual":
         return qs.filter(pk=wanted).first()
     return qs.filter(closed=False).order_by("-start").first()

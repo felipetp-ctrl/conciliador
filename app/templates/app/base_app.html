@@ -31,7 +31,7 @@
     <form class="stack" style="margin-top:8px" method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn--ghost btn--sm" type="submit" style="width:100%">{% icon "x" 14 %}Sair</button></form>
   </aside>
   <main class="main"><div class="main__inner">
-    <form class="topbar" method="get" hx-get="" hx-trigger="change" hx-target="body" hx-push-url="true">
+    <form class="topbar" method="get" action="{% url 'fechamento' 'atual' %}" hx-get="{% url 'fechamento' 'atual' %}" hx-trigger="change" hx-target="body" hx-push-url="true">
       <div class="topbar__group">
         <div class="select select--sm" style="width:240px"><label class="sr-only" for="f-conta">Conta</label><select id="f-conta" name="conta">{% for c in contas %}<option value="{{ c.id }}" {% if c.id == conta.id %}selected{% endif %}>{{ c.label }}</option>{% endfor %}</select></div>
         <div class="select select--sm" style="width:190px"><label class="sr-only" for="f-periodo">Período</label><select id="f-periodo" name="periodo">{% for p in periodos %}<option value="{{ p.slug }}" {% if p.slug == periodo.slug %}selected{% endif %}>{{ p.label }}</option>{% endfor %}</select></div>
