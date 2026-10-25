@@ -62,12 +62,23 @@ def deduplicate_transactions(
     """Devolve só os lançamentos novos de ``incoming``, na ordem de entrada.
 
     É duplicado quem tem o mesmo ``fitid`` não vazio ou a mesma ``dedup_key`` de um
-    lançamento existente. Os itens de ``incoming`` não são comparados entre si.
+    lançamento existente (``fitid`` vazio ou só com espaços e ``dedup_key`` vazia
+    contam como ausentes). Os itens de ``incoming`` não são comparados entre si.
+
+    ``existing`` e ``incoming`` devem pertencer à MESMA conta: o ``fitid`` é comparado
+    globalmente e ``BankTransaction`` não guarda a conta, então quem chama deve filtrar
+    ``existing`` por conta antes.
     """
     fitids: set[str] = set()
     keys: set[str] = set()
     for tx in existing:
-        if tx.fitid:
-            fitids.add(tx.fitid)
-        keys.add(tx.dedup_key)
-    return [t for t in incoming if not (t.fitid and t.fitid in fitids) and t.dedup_key not in keys]
+        if tx.fitid and tx.fitid.strip():
+            fitids.add(tx.fitid.strip())
+        if tx.dedup_key:
+            keys.add(tx.dedup_key)
+
+    def is_duplicate(tx: BankTransaction) -> bool:
+        fitid = (tx.fitid or "").strip()
+        return (bool(fitid) and fitid in fitids) or (bool(tx.dedup_key) and tx.dedup_key in keys)
+
+    return [t for t in incoming if not is_duplicate(t)]

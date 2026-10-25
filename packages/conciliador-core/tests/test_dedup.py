@@ -46,21 +46,40 @@ def test_memo_normalization_accents_case_spaces():
     assert a == b
 
 
-def test_pipe_in_memo_cannot_collide_with_other_field_split():
-    acc1 = BankAccountRef("0341", "1234", "56789-0")
-    acc2 = BankAccountRef("0341", "1234|56789-0", "")
-    [k1] = compute_dedup_keys(acc1, [(D, 100, "A")])
-    [k2] = compute_dedup_keys(acc2, [(D, 100, "A")])
-    assert k1 != k2
+def test_pipe_in_fields_cannot_collide_with_other_field_split():
+    # Pares cujo join ingênuo com "|" seria idêntico.
+    pairs = [
+        (BankAccountRef("0341", "1234|5", "6"), BankAccountRef("0341", "1234", "5|6")),
+        (BankAccountRef("03|41", "1", "6"), BankAccountRef("03", "41|1", "6")),
+    ]
+    for acc1, acc2 in pairs:
+        naive1 = "|".join([acc1.bank_id, acc1.branch or "", acc1.account_number])
+        naive2 = "|".join([acc2.bank_id, acc2.branch or "", acc2.account_number])
+        assert naive1 == naive2  # prova que é uma colisão real do join ingênuo
+        [k1] = compute_dedup_keys(acc1, [(D, 100, "A")])
+        [k2] = compute_dedup_keys(acc2, [(D, 100, "A")])
+        assert k1 != k2
+
+
+def test_pipe_in_memo_is_part_of_the_memo():
     [m1] = compute_dedup_keys(ACC, [(D, 100, "A|1")])
     [m2] = compute_dedup_keys(ACC, [(D, 100, "A")])
     assert m1 != m2
-    [n1] = compute_dedup_keys(ACC, [(D, 10, "0|X")])
-    [n2] = compute_dedup_keys(ACC, [(D, 100, "X")])
-    assert n1 != n2
 
 
-def test_none_branch_differs_from_other_branch_and_is_stable():
+def test_empty_dedup_key_counts_as_absent():
+    existing = [_tx("A", "")]
+    incoming = [_tx("B", "")]
+    assert deduplicate_transactions(existing, incoming) == incoming
+
+
+def test_whitespace_only_fitid_counts_as_absent():
+    existing = [_tx("  ", "k1")]
+    incoming = [_tx(" ", "k2")]
+    assert deduplicate_transactions(existing, incoming) == incoming
+
+
+def test_none_branch_equals_empty_branch_and_key_is_sha256_hex():
     none = BankAccountRef("0341", None, "9")
     [a] = compute_dedup_keys(none, [(D, 1, "A")])
     [b] = compute_dedup_keys(BankAccountRef("0341", "", "9"), [(D, 1, "A")])
