@@ -276,7 +276,14 @@ def _parse_nfse(nfse: Element, company: str, default_due_days: int) -> tuple[Exp
         ]
     )
     liq = txt(valores, "vLiq")
-    net = _cents(liq, "valores/vLiq") if liq else gross - sum(v for _, v in withholdings)
+    if liq:
+        net = _cents(liq, "valores/vLiq")
+    else:
+        if iss_retained and not txt(valores, "vISSQN"):
+            raise _invalid(
+                "ISSQN retido sem valores/vISSQN e sem valores/vLiq: valor líquido indeterminado."
+            )
+        net = gross - sum(v for _, v in withholdings)
     if net == 0:
         return ()
     return (
@@ -317,7 +324,9 @@ def _parse_nfse_event(root: Element) -> tuple[str, ...]:
     if _text(info, "dhProc", NFSE_NS) is None:
         return ()
     event_id = info.get("Id") or ""
-    if event_id.startswith("EVT") and event_id[3:53] != chave:
+    if not event_id.startswith("EVT"):
+        raise _invalid("Evento sem o atributo Id (EVT + chave de acesso).")
+    if event_id[3:53] != chave:
         return ()
     return (f"nfse:{chave}",)
 

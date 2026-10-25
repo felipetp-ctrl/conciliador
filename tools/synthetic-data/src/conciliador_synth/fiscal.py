@@ -102,15 +102,18 @@ def make_nfse(
     net_cents: int | None,
     iss_withheld_cents: int = 0,
     number: str = "1",
-    withholdings: Mapping[str, int] = {},  # noqa: B006 - nunca é alterado
+    iss_amount_cents: int = 0,
+    withholdings: Mapping[str, int] | None = None,
 ) -> bytes:
     """NFS-e nacional sintética (``NFSe``). Valores em centavos.
 
     ``chave`` são os 50 caracteres após ``NFS`` no ``infNFSe/@Id``. ``net_cents=None`` omite
     ``valores/vLiq``. ``iss_withheld_cents > 0`` marca o ISSQN como retido pelo tomador
-    (``tpRetISSQN`` 2) e informa ``valores/vISSQN``. ``withholdings`` aceita ``vRetCP``,
+    (``tpRetISSQN`` 2) e informa ``valores/vISSQN``; ``iss_amount_cents`` informa o ISSQN devido
+    sem retenção (``tpRetISSQN`` 1). ``withholdings`` aceita ``vRetCP``,
     ``vRetIRRF`` e ``vRetCSLL``. ``tomador_doc`` com 11 caracteres é CPF; ``None`` omite ``toma``.
     """
+    withholdings = withholdings or {}
     unknown = set(withholdings) - set(NFSE_WITHHOLDING_NAMES)
     if unknown:
         raise ValueError(f"Retenção desconhecida: {sorted(unknown)}")
@@ -121,7 +124,8 @@ def make_nfse(
     )
     trib_fed = f"<tribFed>{fed}</tribFed>" if fed else ""
     retained = iss_withheld_cents > 0
-    iss = f"<vISSQN>{_money(iss_withheld_cents)}</vISSQN>" if retained else ""
+    iss_value = iss_withheld_cents if retained else iss_amount_cents
+    iss = f"<vISSQN>{_money(iss_value)}</vISSQN>" if iss_value > 0 else ""
     liq = f"<vLiq>{_money(net_cents)}</vLiq>" if net_cents is not None else ""
     toma = (
         f"<toma>{_party_doc(tomador_doc)}<xNome>TOMADOR SINTETICO</xNome></toma>"

@@ -82,3 +82,7 @@ dentro do `infNFSe`), `infDPS/{dhEmi,prest/CNPJ|CPF,toma/CNPJ|CPF}`, `infDPS/val
 (`verAplic, ambGer, nSeqEvento, dhProc, nDFSe`, `Id` `EVT`+50+6+3) com
 `pedRegEvento/infPedReg/{chNFSe, e101101}`; raiz `pedRegEvento` é só o pedido. O XSD 1.01 usa
 `TSCNPJ` `[0-9]{14}` (sem letras); o parser aceita CNPJ alfanumérico por exigência do projeto.
+
+Licença do `nfelib` verificada em 2026-10-24: **MIT** (`pyproject.toml` do repositório:
+`license = {text = "MIT"}`, `license-files = ["MIT-LICENSE"]`, classificador
+`License :: OSI Approved :: MIT License`; metadados do PyPI idem). Nada do `nfelib` foi copiado.

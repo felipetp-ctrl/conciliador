@@ -75,7 +75,8 @@ def test_nfse_federal_withholdings_in_fixed_order():
 
 
 def test_nfse_iss_not_retained_is_not_subtracted():
-    data = _nfse(net_cents=None, iss_withheld_cents=0)
+    data = _nfse(net_cents=None, iss_withheld_cents=0, iss_amount_cents=10000)
+    assert b"<vISSQN>100.00</vISSQN>" in data and b"<tpRetISSQN>1<" in data
     (it,) = parse_fiscal_xml(data, CO).items
     assert (it.amount_cents, it.withholdings) == (200000, ())
 
@@ -207,3 +208,21 @@ def test_nfse_cancellation_without_dhproc_ignored():
 def test_synth_rejects_unknown_nfse_withholding():
     with pytest.raises(ValueError, match="Retenção desconhecida"):
         _nfse(withholdings={"vFoo": 1})
+
+
+def test_nfse_iss_retained_without_viss_and_vliq_is_invalid_format():
+    data = _nfse(net_cents=None).replace(b"<vISSQN>100.00</vISSQN>", b"")
+    assert b"<tpRetISSQN>2<" in data
+    assert _code(data) == "invalid_format"
+
+
+def test_nfse_cancellation_event_id_must_start_with_evt():
+    data = make_nfse_cancellation(K).replace(b'Id="EVT', b'Id="ABC', 1)
+    assert _code(data) == "invalid_format"
+
+
+def test_nfse_cancellation_without_event_id_is_invalid_format():
+    data = make_nfse_cancellation(K).replace(
+        b'<infEvento Id="EVT' + K.encode() + b'101101001">', b"<infEvento>"
+    )
+    assert _code(data) == "invalid_format"
