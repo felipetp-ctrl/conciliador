@@ -840,3 +840,90 @@ class AccountsTests(TestCase):
         html = ca.get("/fechamento/atual/").content.decode()
         self.assertIn("PIX DA EMPRESA A", html)
         self.assertNotIn("PIX DA EMPRESA B", html)
+
+
+class ExportTests(TestCase):
+    def setUp(self):
+        self.company = _company()
+        self.account = _account(self.company)
+        _login(self.client, self.company)
+        _item(
+            self.company,
+            50000,
+            date(2026, 1, 20),
+            counterpart_doc="52998224725",
+            number="nº 7",
+        )
+
+    def test_csv_is_safe_and_masks_cpf(self):
+        _tx(
+            self.account,
+            -12345,
+            "=SOMA(A1:B1)",
+            date(2026, 1, 10),
+            key="k-csv",
+        )
+
+        resp = self.client.get("/demonstrativo/atual/csv/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp["Content-Type"].startswith("text/csv"))
+        self.assertIn(".csv", resp["Content-Disposition"])
+        body = resp.content.decode("utf-8")
+        self.assertTrue(body.startswith("\ufeff"))
+        self.assertIn("Situação;Data;Histórico do extrato", body)
+        self.assertIn("'=SOMA(A1:B1)", body)
+        self.assertIn("***.982.247-**", body)
+        self.assertNotIn("52998224725", body)
+        self.assertIn("Oficina Exemplo Ltda", body)
+
+    def test_pdf_is_generated(self):
+        resp = self.client.get("/demonstrativo/atual/pdf/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "application/pdf")
+        self.assertIn(".pdf", resp["Content-Disposition"])
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 1000)
+
+    def test_accountant_can_export(self):
+        from django.test import Client
+
+        accountant = Client()
+        _login(accountant, self.company, Role.ACCOUNTANT)
+        self.assertEqual(accountant.get("/demonstrativo/atual/csv/").status_code, 200)
+        self.assertEqual(accountant.get("/demonstrativo/atual/pdf/").status_code, 200)
+
+    def test_url_period_is_used(self):
+        period = models.Period.objects.create(
+            account=self.account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+            closing_balance_cents=10000,
+            closed=True,
+        )
+
+        resp = self.client.get(f"/demonstrativo/{period.pk}/csv/")
+        body = resp.content.decode("utf-8")
+        self.assertIn("01/01/2026 a 31/01/2026", body)
+        self.assertIn(
+            f"demonstrativo-2026-01-conta-{self.account.pk}.csv", resp["Content-Disposition"]
+        )
+
+    def test_money_and_document_formatting(self):
+        from . import export
+
+        self.assertEqual(export.money(0), "0,00")
+        self.assertEqual(export.money(-12345), "-123,45")
+        self.assertEqual(export.money(123456), "1234,56")
+        self.assertEqual(export.money(None), "")
+        self.assertEqual(export.format_document("52998224725"), "***.982.247-**")
+        self.assertEqual(export.format_document("11222333000181"), "11.222.333/0001-81")
+        self.assertEqual(export.safe_text("+55 11 99999-0000"), "'+55 11 99999-0000")
+
+    def test_pdf_handles_many_rows(self):
+        for i in range(60):
+            _item(self.company, 1000 + i, date(2026, 3, 1), number=f"nº {100 + i}")
+        resp = self.client.get("/demonstrativo/atual/pdf/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 5000)

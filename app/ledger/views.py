@@ -18,7 +18,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from . import ingest, models, services
+from . import export, ingest, models, services
 
 _RULE_KEY = {
     "Regra 1": "document",
@@ -70,12 +70,14 @@ def _conta(
     return (contas[0] if contas else None), contas
 
 
-def _resolve_period(request: HttpRequest, conta: models.BankAccount | None) -> models.Period | None:
-    """Período ativo: o escolhido em ``?periodo=`` ou o último aberto da conta."""
+def _resolve_period(
+    request: HttpRequest, conta: models.BankAccount | None, slug: str | None = None
+) -> models.Period | None:
+    """Período ativo: o slug da URL, o ``?periodo=`` ou o último aberto da conta."""
     if conta is None:
         return None
     qs = models.Period.objects.filter(account=conta)
-    wanted = request.GET.get("periodo")
+    wanted = slug or request.GET.get("periodo")
     if wanted and wanted != "atual":
         return qs.filter(pk=wanted).first()
     return qs.filter(closed=False).order_by("-start").first()
@@ -120,11 +122,13 @@ def _abertura_txt(cents: int | None) -> str:
     return "" if cents is None else f"{cents // 100},{cents % 100:02d}"
 
 
-def _base(request: HttpRequest, nav: str) -> tuple[dict, models.Company]:
+def _base(
+    request: HttpRequest, nav: str, periodo_slug: str | None = None
+) -> tuple[dict, models.Company]:
     company = _company_of(request)
     view = "contador" if _role_of(request) == Role.ACCOUNTANT else "dono"
     conta, contas = _conta(request, company)
-    period = _resolve_period(request, conta)
+    period = _resolve_period(request, conta, periodo_slug)
     ctx = services.reconcile(company, conta, period)
     ctx.update(
         {
@@ -183,7 +187,7 @@ def _filtros_contador(recon: list[dict]) -> list[dict]:
 
 @login_required
 def fechamento(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
     filtro = request.GET.get("f", "todos")
     ctx["filtro"] = filtro
     if ctx["view"] == "contador":
@@ -212,13 +216,13 @@ def _filtered_contador(items: list[dict], filtro: str) -> list[dict]:
 
 @login_required
 def fechamento_totais(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
     return render(request, "app/_totais.html", ctx)
 
 
 @login_required
 def fechamento_lista(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
     filtro = request.GET.get("f", "todos")
     ctx["filtro"] = filtro
     ctx["items"] = _filtered(ctx["items"], filtro)
@@ -629,11 +633,11 @@ def health(request: HttpRequest):
 
 
 # --------------------------------------------------------------------------- #
-# Stubs do MVP (exportações, upload real, convites de contador) — ligados depois.
+# Exportações do demonstrativo (CSV e PDF).
 # --------------------------------------------------------------------------- #
 @login_required
 def demonstrativo_lista(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
     filtro = request.GET.get("f", "todos")
     ctx["filtros"] = _filtros_contador(ctx["items"])
     ctx["items"] = _filtered_contador(ctx["items"], filtro)
@@ -642,12 +646,18 @@ def demonstrativo_lista(request: HttpRequest, periodo_slug: str):
 
 @login_required
 def demonstrativo_csv(request: HttpRequest, periodo_slug: str):
-    return HttpResponse("demonstrativo.csv (placeholder)\n", content_type="text/csv")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
+    response = HttpResponse(export.csv_bytes(ctx), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{export.filename(ctx, "csv")}"'
+    return response
 
 
 @login_required
 def demonstrativo_pdf(request: HttpRequest, periodo_slug: str):
-    return HttpResponse("demonstrativo.pdf (placeholder)", content_type="text/plain")
+    ctx, _ = _base(request, "fechamento", periodo_slug)
+    response = HttpResponse(export.pdf_bytes(ctx), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{export.filename(ctx, "pdf")}"'
+    return response
 
 
 @login_required
