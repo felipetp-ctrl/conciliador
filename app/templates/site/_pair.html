@@ -1,0 +1,7 @@
+{% load conciliador_ds %}{# MatchPair compacto para a landing. status, b_date, b_memo, b_cents, d_who, d_title, d_cents (lado do documento opcional) #}
+<div class="pair pair--{{ status }}{% if status|node_closed %} pair--closed{% endif %}">
+  <div class="pair__side"><div class="pair__who">Banco · <span class="mono">{{ b_date }}</span></div><div class="pair__title">{{ b_memo }}</div>{{ b_cents|brl:"always" }}</div>
+  <div class="pair__link" aria-hidden="true"><div class="pair__node">{% icon status|node_icon 14 %}</div></div>
+  {% if d_title %}<div class="pair__side"><div class="pair__who">{{ d_who }}</div><div class="pair__title">{{ d_title }}</div>{% if d_cents > 0 %}{{ d_cents|brl:"always" }}{% else %}{{ d_cents|brl }}{% endif %}</div>
+  {% else %}<div class="pair__side pair__side--empty"><div class="pair__who">Documento</div><div class="pair__empty">Nenhuma nota ou conta encontrada</div></div>{% endif %}
+</div>

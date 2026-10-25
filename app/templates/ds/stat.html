@@ -1,0 +1,6 @@
+{% load conciliador_ds %}{# label, tone (ok|pending|late|unid|div), cents, caption #}
+<div class="stat">
+  <span class="stat__label"><span class="dot dot--{{ tone }}"></span>{{ label }}</span>
+  {{ cents|brl:"never,lg,neutral" }}
+  {% if caption %}<span class="stat__caption">{{ caption }}</span>{% endif %}
+</div>

@@ -1,0 +1,24 @@
+{% load conciliador_ds %}{# source: {kind, title, formats, accept, description}; job: {state, file_name, progress, result, error, status_url} #}
+{# Fragmento trocado por HTMX: o form se reenvia ao escolher arquivo; enquanto "processing", faz polling em job.status_url. #}
+<form id="dz-{{ source.kind }}" class="dropzone{% if job.state and job.state != 'idle' %} dropzone--{{ job.state }}{% endif %}" data-dropzone
+      hx-post="{% url 'importacao_enviar' source.kind %}" hx-encoding="multipart/form-data" hx-trigger="change" hx-target="this" hx-swap="outerHTML"
+      {% if job.state == 'processing' %}hx-get="{{ job.status_url }}" hx-trigger="every 1s"{% endif %}>
+  {% csrf_token %}
+  <div class="dropzone__top">
+    <div class="dropzone__icon">{% if job.state == 'done' %}{% icon "circle-check" 18 %}{% elif job.state == 'error' %}{% icon "file-x" 18 %}{% elif job.state == 'processing' %}{% icon "loader" 18 %}{% else %}{% icon "upload" 18 %}{% endif %}</div>
+    <span class="dropzone__formats">{{ source.formats }}</span>
+  </div>
+  <div><div class="dropzone__title">{{ source.title }}</div><div class="dropzone__desc">{{ source.description }}</div></div>
+  {% if job.state == 'processing' %}
+    <div><div class="row" style="justify-content:space-between"><span class="dropzone__file">{{ job.file_name }}</span><span class="dropzone__file">lendo…</span></div>
+    <div class="dropzone__bar" role="progressbar" aria-valuenow="{{ job.progress }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ job.progress }}%"></span></div></div>
+  {% elif job.state == 'done' %}
+    <div><div class="dropzone__file">{{ job.file_name }}</div><div class="dropzone__result" role="status">{{ job.result }}</div></div>
+  {% elif job.state == 'error' %}
+    <div class="dropzone__error" role="alert"><div class="dropzone__file">{{ job.file_name }}</div>{{ job.error }}</div>
+  {% endif %}
+  {% if job.state != 'processing' %}
+  <label class="dropzone__pick">{% if job.state == 'done' or job.state == 'error' %}Enviar outro arquivo{% else %}Arraste aqui ou escolha arquivos{% endif %}
+    <input type="file" name="files" accept="{{ source.accept }}" multiple></label>
+  {% endif %}
+</form>

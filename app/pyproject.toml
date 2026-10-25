@@ -1,0 +1,13 @@
+[project]
+name = "conciliador-app"
+version = "0.1.0"
+description = "Aplicação Django do conciliador (AGPL-3.0): painel, detalhe, importação e demonstrativo."
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+dependencies = [
+    "django>=5.1,<6.0",
+    "conciliador-core",
+]
+
+[tool.uv.sources]
+conciliador-core = { workspace = true }

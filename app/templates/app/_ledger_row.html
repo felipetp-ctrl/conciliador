@@ -1,0 +1,27 @@
+{% load conciliador_ds %}{# Uma linha banco ⟷ documento (1:1, parcela, remessa). Trocada inteira por confirmar/recusar. #}
+<div id="item-{{ item.id }}" class="ledger-row pair--{{ item.status }}{% if item.status|node_closed %} ledger-row--closed{% endif %}" role="row">
+  <div role="cell">{% include "ds/status_badge.html" with status=item.status direction=item.direction size="sm" %}</div>
+  <div role="cell">{% if item.bank_many %}<div class="ledger-row__many">{% for b in item.bank_many %}{% include "app/_bank_mini.html" %}{% endfor %}</div>
+    {% elif item.bank %}{% include "app/_bank_mini.html" with b=item.bank %}
+    {% else %}<div class="ledger-row__empty">{% if item.status == 'atrasado' %}nada entrou no banco até agora{% else %}ainda não apareceu no banco{% endif %}</div>{% endif %}</div>
+  <div class="ledger-row__node" aria-hidden="true"><div class="pair__node">{% icon item.status|node_icon 14 %}</div></div>
+  <div role="cell">{% if item.doc_many %}<div class="ledger-row__many">{% for d in item.doc_many %}{% include "app/_doc_mini.html" %}{% endfor %}</div>
+    {% elif item.doc %}{% include "app/_doc_mini.html" with d=item.doc %}
+    {% elif item.candidates %}<div class="ledger-row__cell"><div style="min-width:0"><div class="ledger-row__top">{{ item.candidates|length }} documentos possíveis</div><div class="ledger-row__title">{{ item.candidates.0.counterpart }}</div></div>{{ item.candidates.0.cents|brl:"always" }}</div>
+    {% else %}<div class="ledger-row__empty">{% if item.status == 'transferencia' %}entre contas{% else %}sem nota ou conta correspondente{% endif %}</div>{% endif %}</div>
+  <div class="ledger-row__actions" role="cell">
+    {% if view == 'dono' and item.status == 'a_confirmar' and item.candidates %}
+      <a class="btn btn--sm" href="{% url 'item_detalhe' item.id %}">Escolher documento</a>
+    {% elif view == 'dono' and item.status == 'a_confirmar' and item.kind %}
+      <button class="btn btn--sm btn--accent" hx-post="{% url 'item_confirmar' item.id %}" hx-target="#item-{{ item.id }}" hx-swap="outerHTML swap:180ms">{% icon "check" 14 %}Confirmar</button>
+    {% elif view == 'dono' and item.status == 'a_confirmar' %}
+      <button class="btn btn--sm btn--ghost" hx-post="{% url 'item_recusar' item.id %}" hx-target="#item-{{ item.id }}" hx-swap="outerHTML swap:180ms">Recusar</button>
+      <button class="btn btn--sm btn--accent" hx-post="{% url 'item_confirmar' item.id %}" hx-target="#item-{{ item.id }}" hx-swap="outerHTML swap:180ms">{% icon "check" 14 %}Confirmar</button>
+    {% else %}
+      <a class="icon-btn icon-btn--sm" href="{% url 'item_detalhe' item.id %}" aria-label="Abrir vínculo">{% icon "chevron-right" 16 %}</a>
+    {% endif %}
+  </div>
+  {% if item.facts and item.status == 'a_confirmar' or item.facts and item.signed_by %}
+  <div class="ledger-row__stamp">{% include "ds/rule_stamp.html" with rule=item.rule facts=item.facts signed_by=item.signed_by size="sm" %}</div>
+  {% endif %}
+</div>

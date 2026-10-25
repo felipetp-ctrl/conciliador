@@ -1,0 +1,85 @@
+{% load conciliador_ds %}{# Bloco "O que fazer" por estado. Contador: somente leitura, nenhum botão de mutação no DOM. #}
+{% if view == 'contador' %}
+  {% include "ds/alert.html" with tone="info" icon="lock" title="Somente leitura" body="Confirmações e vínculos são feitos pela empresa. Você pode exportar o demonstrativo." %}
+
+{% elif item.status == 'a_confirmar' and item.candidates %}
+  <form class="stack" hx-post="{% url 'item_confirmar' item.id %}" hx-target="body">
+    <p style="margin:0">Duas notas têm o mesmo valor e vencimento. Escolha a que corresponde a este lançamento.</p>
+    <fieldset class="stack" style="border:0;padding:0;margin:0;gap:8px"><legend class="sr-only">Documentos possíveis</legend>
+      {% for c in item.candidates %}<label class="choice"><input type="radio" name="doc_id" value="{{ c.id }}" {% if forloop.first %}checked{% endif %}><span><span style="display:block;font-weight:600;color:var(--text-strong)">{{ c.kind }} {{ c.number }} · {{ c.note }}</span>{{ c.doc_id|doc }}</span>{{ c.cents|brl:"always" }}</label>{% endfor %}
+    </fieldset>
+    <div class="row"><button class="btn btn--accent" type="submit">{% icon "check" 16 %}Confirmar documento escolhido</button><button class="btn" type="button" hx-post="{% url 'item_recusar' item.id %}" hx-target="body">Nenhuma delas</button></div>
+  </form>
+
+{% elif item.status == 'a_confirmar' and item.kind == 'partial' %}
+  <div class="stack">
+    <p style="margin:0">Um título quitado em {{ item.bank_many|length }} lançamentos, cuja soma confere com a nota. Confirme para baixar a {{ item.doc.kind }} {{ item.doc.number }}.</p>
+    <div class="row"><button class="btn btn--accent" hx-post="{% url 'item_confirmar' item.id %}" hx-target="body">{% icon "check" 16 %}Confirmar parcela</button></div>
+  </div>
+
+{% elif item.status == 'a_confirmar' and item.kind == 'batch' %}
+  <div class="stack">
+    <p style="margin:0">Um lançamento que quita {{ item.doc_many|length }} títulos, cuja soma confere. Confirme para baixar todos de uma vez.</p>
+    <div class="row"><button class="btn btn--accent" hx-post="{% url 'item_confirmar' item.id %}" hx-target="body">{% icon "check" 16 %}Confirmar remessa</button></div>
+  </div>
+
+{% elif item.status == 'a_confirmar' %}
+  <div class="stack">
+    <p style="margin:0">Ao confirmar, a {{ item.doc.kind }} {{ item.doc.number }} passa a <b>{% if item.direction == 'in' %}Recebido{% else %}Pago{% endif %}</b>. Nada é conciliado sem a sua confirmação.</p>
+    <div class="row"><button class="btn btn--accent" hx-post="{% url 'item_confirmar' item.id %}" hx-target="body">{% icon "check" 16 %}Confirmar vínculo</button><button class="btn" hx-post="{% url 'item_recusar' item.id %}" hx-target="body">Recusar</button></div>
+    <div class="faint" style="font-size:12.5px">Uma recusa impede que esta mesma sugestão volte a aparecer.</div>
+  </div>
+
+{% elif item.status == 'conciliado' or item.status == 'divergencia' %}
+  <div class="stack">
+    {% if item.status == 'divergencia' %}{% include "ds/alert.html" with tone="div" title=item.diff_title body=item.diff_reason %}{% endif %}
+    <div>Vínculo confirmado. Se foi um engano, você pode desfazer — os dois lados voltam a ficar em aberto.</div>
+    <div><button class="btn btn--danger" hx-post="{% url 'item_desfazer' item.id %}" hx-target="body" hx-confirm="Desfazer este vínculo?">{% icon "unlink" 16 %}Desfazer vínculo</button></div>
+  </div>
+
+{% elif item.status == 'classificado' or item.status == 'transferencia' %}
+  <div class="stack">
+    <p style="margin:0">{% if item.status == 'transferencia' %}Transferência entre contas — não entra no controle interno.{% else %}Lançamento classificado como {{ item.rule }}.{% endif %}</p>
+    <div><button class="btn btn--ghost" hx-post="{% url 'item_desclassificar' item.id %}" hx-target="body">{% icon "unlink" 16 %}Desclassificar</button></div>
+  </div>
+
+{% elif item.status == 'nao_identificado' %}
+  <form class="stack" hx-post="{% url 'item_classificar' item.id %}" hx-target="body">
+    <p style="margin:0">Nenhuma nota ou conta corresponde a este lançamento. Diga o que foi, para ele entrar no fechamento.</p>
+    <div class="field"><label class="field__label" for="c-tipo">O que é</label><div class="select">
+      <select id="c-tipo" name="kind" data-class-kind>
+        {% for c in classificacoes %}<option value="{{ c.key }}" {% if c.key == 'outro' %}data-direction="ask"{% endif %}>{{ c.label }}</option>{% endfor %}
+      </select>
+    </div></div>
+    <div class="field" data-when-transfer>
+      <label class="field__label" for="c-counter">Lançamento na outra conta</label>
+      <div class="select"><select id="c-counter" name="counterpart">
+        <option value="">— nenhum —</option>
+        {% for o in transferencias %}<option value="{{ o.id }}">{{ o.date|date:"d/m" }} · {{ o.account }} · {{ o.memo|truncatechars:32 }} · {{ o.cents|brl }}</option>{% endfor %}
+      </select></div>
+      <div class="muted" style="font-size:12.5px">A mesma movimentação deixa de contar duas vezes.</div>
+    </div>
+    <div class="field" data-when-direction>
+      <label class="field__label" for="c-dir">Direção</label>
+      <div class="select"><select id="c-dir" name="direction"><option value="out">Despesa</option><option value="in">Receita</option></select></div>
+    </div>
+    <div class="field"><label class="field__label" for="c-note">Descrição (opcional)</label><div class="field__control"><input class="field__input" id="c-note" name="note" placeholder="ex.: tarifa mensal"></div></div>
+    <div class="row"><button class="btn btn--accent" type="submit">{% icon "check" 16 %}Registrar lançamento</button></div>
+  </form>
+
+{% else %}{# pendente / atrasado #}
+  <div class="stack">
+    {% if item.status == 'atrasado' %}{% include "ds/alert.html" with tone="late" title=item.due_title body=item.due_body %}{% else %}{% include "ds/alert.html" with tone="pending" title=item.due_title body="Ainda no prazo. Quando o pagamento entrar no extrato, ele aparece aqui para você confirmar." %}{% endif %}
+    <form class="stack manual-link" hx-post="{% url 'vinculo_manual' %}" hx-target="body">
+      <input type="hidden" name="doc_id" value="{{ item.doc.id }}">
+      <div class="field"><label class="field__label" for="v-banco">Lançamento do banco</label><div class="select"><select id="v-banco" name="bank_id">{% for b in lancamentos_livres %}<option value="{{ b.id }}">{{ b.date|date:"d/m" }} · {{ b.memo }} · {{ b.cents|brl }}</option>{% endfor %}</select></div></div>
+      <fieldset class="seg"><legend class="sr-only">Se o valor for diferente</legend>
+        <label><input type="radio" name="mode" value="parcial" checked><span>Pagamento parcial</span></label>
+        <label><input type="radio" name="mode" value="quitar"><span>Quitar com diferença</span></label>
+      </fieldset>
+      <div class="field" data-when="quitar"><label class="field__label" for="v-just">Justificativa (obrigatória)</label><div class="select"><select id="v-just" name="reason"><option>Desconto</option><option>Juros</option><option>Multa</option><option>Tarifa</option><option>Outro</option></select></div></div>
+      <div class="muted" data-when="parcial" style="font-size:13.5px">A nota continua em aberto pelo saldo restante.</div>
+      <div><button class="btn btn--accent" type="submit">{% icon "link" 16 %}Vincular</button></div>
+    </form>
+  </div>
+{% endif %}

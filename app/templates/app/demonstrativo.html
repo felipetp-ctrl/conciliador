@@ -1,0 +1,31 @@
+{% extends "app/base_app.html" %}{% load conciliador_ds %}
+{% block title %}Demonstrativo · {{ periodo.label }}{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div class="page-header__text">
+    <div class="micro" style="margin-bottom:14px">Demonstrativo de conciliação · {{ org.name }}</div>
+    <h1 class="page-header__title">{{ periodo.label }}</h1>
+    <p class="page-header__lede">{{ conta.label }} · {{ periodo.start|date:"d/m/Y" }} a {{ periodo.end|date:"d/m/Y" }}. Acesso somente leitura, concedido pela empresa.</p>
+  </div>
+  <div class="page-header__actions"><a class="btn" href="{% url 'demonstrativo_csv' periodo.slug %}">{% icon "file-spreadsheet" 16 %}Exportar CSV</a><a class="btn btn--primary" href="{% url 'demonstrativo_pdf' periodo.slug %}">{% icon "file-down" 16 %}Exportar PDF</a></div>
+</header>
+<section class="card">{% include "ds/ledger_close.html" with view="contador" %}</section>
+<section class="section">
+  <nav class="tabs" aria-label="Filtrar por situação" style="margin-bottom:8px">
+    {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-get="{% url 'demonstrativo_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-target="#demo-lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
+  </nav>
+  <div id="demo-lista" class="card card--flush" style="padding-top:16px"><div class="table-wrap"><table class="table table--dense">
+    <thead><tr><th scope="col">Situação</th><th scope="col">Data</th><th scope="col">Histórico do extrato</th><th scope="col">Documento</th><th scope="col">Venc.</th><th scope="col" class="num">Extrato</th><th scope="col" class="num">Documento</th><th scope="col" class="num">Diferença</th></tr></thead>
+    <tbody>{% for i in items %}<tr data-href="{% url 'item_detalhe' i.id %}">
+      <td>{% include "ds/status_badge.html" with status=i.status view="contador" size="sm" %}</td>
+      <td class="mono">{% if i.bank %}{{ i.bank.date|date:"d/m/Y" }}{% elif i.bank_many %}<span class="muted">{{ i.bank_many|length }} lanç.</span>{% else %}—{% endif %}</td>
+      <td>{% if i.bank %}<span class="mono mono--12">{{ i.bank.raw }}</span>{% elif i.bank_many %}<span class="muted" style="font-size:12px">{{ i.bank_many.0.memo|truncatechars:24 }}…</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td>{% if i.doc %}<div style="font-size:13px;color:var(--text-strong)">{{ i.doc.kind }} {{ i.doc.number }}</div>{{ i.doc.doc_id|doc }}{% elif i.doc_many %}<span class="muted" style="font-size:13px">{{ i.doc_many|length }} títulos</span>{% elif i.candidates %}<span class="muted" style="font-size:13px">{{ i.candidates|length }} candidatos</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td class="mono mono--muted">{% if i.doc %}{{ i.doc.due|date:"d/m" }}{% elif i.doc_many %}—{% else %}—{% endif %}</td>
+      <td class="num">{% if i.bank %}{{ i.bank.cents|brl:"auto,sm,neutral,nocur" }}{% elif i.bank_many %}{{ i.cents|brl:"auto,sm,neutral,nocur" }}{% else %}<span class="mono mono--faint">—</span>{% endif %}</td>
+      <td class="num">{% if i.doc %}{{ i.doc.cents|brl:"auto,sm,neutral,nocur" }}{% elif i.doc_many %}{{ i.cents|brl:"auto,sm,neutral,nocur" }}{% else %}<span class="mono mono--faint">—</span>{% endif %}</td>
+      <td class="num">{% if i.diff_cents %}{{ i.diff_cents|brl:"auto,sm,div,nocur" }}{% else %}<span class="mono mono--faint">0,00</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div></div>
+</section>
+{% endblock %}

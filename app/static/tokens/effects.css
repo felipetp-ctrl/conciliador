@@ -1,0 +1,18 @@
+:root{
+  --radius-xs:6px; --radius-sm:8px; --radius-md:12px; --radius-lg:18px; --radius-xl:24px; --radius-pill:999px;
+
+  --border-width:1px;
+  --shadow-none:none;
+  --shadow-card:0 1px 0 rgba(15,18,21,.04), 0 1px 2px rgba(15,18,21,.04);
+  --shadow-raised:0 1px 2px rgba(15,18,21,.05), 0 12px 32px -12px rgba(15,18,21,.14);
+  --shadow-overlay:0 2px 6px rgba(15,18,21,.06), 0 28px 64px -16px rgba(15,18,21,.24);
+  --ring-focus:0 0 0 3px rgba(31,92,69,.22);
+
+  /* textura editorial: brilho frio quase imperceptível no topo da página */
+  --texture-page:radial-gradient(1200px 520px at 12% -8%, rgba(255,255,255,1), rgba(255,255,255,0) 60%), radial-gradient(900px 480px at 100% 0%, rgba(211,227,216,.28), rgba(211,227,216,0) 60%); /* @kind other */
+
+  --ease-out:cubic-bezier(.2,.7,.2,1); /* @kind other */
+  --dur-fast:120ms; /* @kind other */
+  --dur-base:180ms; /* @kind other */
+  --dur-slow:320ms; /* @kind other */
+}

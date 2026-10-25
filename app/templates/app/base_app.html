@@ -1,0 +1,41 @@
+{% load static conciliador_ds %}<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Fechamento{% endblock %} — conciliador</title>
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"defaultSwapStyle":"outerHTML"}'>
+<link rel="stylesheet" href="{% static 'styles.css' %}">
+<link rel="stylesheet" href="{% static 'ds/ds.css' %}">
+<script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+<script src="{% static 'ds/ds.js' %}" defer></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<div class="app">
+  <aside class="sidebar">
+    <a class="sidebar__brand" href="{% url 'fechamento' periodo.slug %}">conciliador</a>{# sem logo ainda: nome em texto puro #}
+    <div class="sidebar__org"><div class="micro" style="margin-bottom:6px">Empresa</div><div class="sidebar__org-name">{{ org.name }}</div>{{ org.cnpj|doc:"nokind" }}</div>
+    <nav class="sidebar__nav" aria-label="Principal">
+      <a class="sidebar__link" href="{% url 'fechamento' periodo.slug %}" {% if nav == 'fechamento' %}aria-current="page"{% endif %}>{% icon "scale" 18 %}{% if view == 'contador' %}Demonstrativo{% else %}Fechamento{% endif %}{% if view == 'dono' and counts.a_confirmar %}<span class="sidebar__count">{{ counts.a_confirmar }}</span>{% endif %}</a>
+      {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'importacao' %}" {% if nav == 'importacao' %}aria-current="page"{% endif %}>{% icon "upload" 18 %}Importação</a>{% endif %}
+    </nav>
+    <div class="sidebar__user"><b>{{ request.user.get_full_name }}</b>{% if view == 'contador' %}Contador · somente leitura{% else %}Titular da empresa{% endif %}</div>
+  </aside>
+  <main class="main"><div class="main__inner">
+    <form class="topbar" method="get" hx-get="" hx-trigger="change" hx-target="body" hx-push-url="true">
+      <div class="topbar__group">
+        <div class="select select--sm" style="width:240px"><label class="sr-only" for="f-conta">Conta</label><select id="f-conta" name="conta">{% for c in contas %}<option value="{{ c.id }}" {% if c.id == conta.id %}selected{% endif %}>{{ c.label }}</option>{% endfor %}</select></div>
+        <div class="select select--sm" style="width:190px"><label class="sr-only" for="f-periodo">Período</label><select id="f-periodo" name="periodo">{% for p in periodos %}<option value="{{ p.slug }}" {% if p.slug == periodo.slug %}selected{% endif %}>{{ p.label }}</option>{% endfor %}</select></div>
+      </div>
+      {% if can_switch_view %}{# só em dev/staff; em produção a visão vem do papel do usuário #}
+      <div class="topbar__group"><span class="faint" style="font-size:12.5px">Visão</span>
+        <fieldset class="seg seg--sm"><legend class="sr-only">Visão</legend>
+          <label><input type="radio" name="view" value="dono" {% if view == 'dono' %}checked{% endif %}><span>Empresário</span></label>
+          <label><input type="radio" name="view" value="contador" {% if view == 'contador' %}checked{% endif %}><span>Contador</span></label>
+        </fieldset></div>
+      {% endif %}
+    </form>
+    {% block content %}{% endblock %}
+  </div></main>
+</div>
+</body>
+</html>

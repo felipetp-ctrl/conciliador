@@ -1,0 +1,11 @@
+{% load conciliador_ds %}<div id="totais">
+<section class="card card--flush" aria-label="Totais do período"><div class="totals">
+  <div class="totals__group"><div><div class="micro">Entradas</div><div class="totals__q">Quem me pagou e quem ainda me deve</div></div>
+    <div class="totals__stats">{% include "ds/stat.html" with label="Recebido" tone="ok" cents=totals.recebido caption=totals.n_recebido_txt %}{% include "ds/stat.html" with label="A receber" tone="pending" cents=totals.a_receber caption=totals.n_a_receber_txt %}{% include "ds/stat.html" with label="Atrasado" tone="late" cents=totals.atrasado caption=totals.n_atrasado_txt %}</div></div>
+  <div class="totals__group"><div><div class="micro">Saídas</div><div class="totals__q">O que paguei e o que está em aberto</div></div>
+    <div class="totals__stats">{% include "ds/stat.html" with label="Pago" tone="ok" cents=totals.pago caption=totals.n_pago_txt %}{% include "ds/stat.html" with label="A pagar" tone="pending" cents=totals.a_pagar caption=totals.n_a_pagar_txt %}</div></div>
+  <div class="totals__group"><div><div class="micro">Sem explicação</div><div class="totals__q">Entrou ou saiu sem documento</div></div>
+    <div class="totals__stats">{% include "ds/stat.html" with label="Não identificado" tone="unid" cents=totals.nao_identificado caption=totals.n_nid_txt %}</div></div>
+</div></section>
+<div class="card card--subtle card--sm" style="margin-top:20px">{% include "ds/ledger_close.html" %}</div>
+</div>

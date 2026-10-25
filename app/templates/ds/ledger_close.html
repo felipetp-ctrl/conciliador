@@ -1,0 +1,39 @@
+{% load conciliador_ds %}{# balance: reconciliação de saldo (extrato × controle interno); view #}
+<div class="recon">
+  <div class="recon__col">
+    <div class="micro" style="margin-bottom:14px">Extrato · o que o banco registrou</div>
+    <div class="recon__term"><span>Saldo inicial</span><span class="mono">{% if balance.opening is not None %}{{ balance.opening|brl:"never,neutral" }}{% else %}—{% endif %}</span></div>
+    <div class="recon__term"><span>Créditos</span><span class="mono"><span class="recon__op">+</span>{{ balance.statement_inflows|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term"><span>Débitos</span><span class="mono"><span class="recon__op">−</span>{{ balance.statement_outflows|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term recon__term--total"><span>Saldo final do extrato</span><span class="mono mono--strong">{% if balance.statement_closing is not None %}{{ balance.statement_closing|brl:"never,neutral" }}{% else %}—{% endif %}</span></div>
+    {% if balance.statement_consistent is False %}<div class="recon__check recon__check--fail" role="alert">{% icon "circle-alert" 14 %}O saldo não fecha: inicial + movimento ≠ saldo final do banco.</div>
+    {% elif balance.statement_consistent is True %}<div class="recon__check">{% icon "circle-check" 14 %}Confere com o saldo informado pelo banco.</div>{% endif %}
+  </div>
+  <div class="recon__col">
+    <div class="micro" style="margin-bottom:14px">Controle interno · o que os documentos dizem</div>
+    <div class="recon__term"><span>Recebimentos baixados</span><span class="mono"><span class="recon__op">+</span>{{ balance.settled_in|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term"><span>Pagamentos baixados</span><span class="mono"><span class="recon__op">−</span>{{ balance.settled_out|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term"><span>Receitas classificadas</span><span class="mono"><span class="recon__op">+</span>{{ balance.classified_in|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term"><span>Despesas classificadas</span><span class="mono"><span class="recon__op">−</span>{{ balance.classified_out|brl:"never,neutral,nocur" }}</span></div>
+    <div class="recon__term recon__term--total"><span>Saldo do controle</span><span class="mono mono--strong">{% if balance.ledger_closing is not None %}{{ balance.ledger_closing|brl:"never,neutral" }}{% else %}—{% endif %}</span></div>
+  </div>
+  <div class="recon__diff">
+    <div class="micro" style="margin-bottom:6px">Diferença</div>
+    <div class="recon__diff-value">{{ balance.difference|brl:"auto,lg,neutral" }}</div>
+    <div class="recon__explain">
+      {% if balance.n_unexplained or balance.n_value_gap %}
+        Explicada por
+        {% if balance.n_unexplained %}{{ balance.n_unexplained }} lançamento{{ balance.n_unexplained|pluralize }} sem documento ({{ balance.unexplained|brl:"auto,sm,neutral" }}){% endif %}
+        {% if balance.n_unexplained and balance.n_value_gap %} e {% endif %}
+        {% if balance.n_value_gap %}{{ balance.n_value_gap }} baixa{{ balance.n_value_gap|pluralize }} com diferença de valor ({{ balance.value_gap|brl:"auto,sm,neutral" }}){% endif %}.
+      {% else %}
+        Nada ficou sem explicação.
+      {% endif %}
+    </div>
+    {% if balance.balanced %}
+      <div class="recon__check recon__check--ok">{% icon "circle-check" 14 %}Fecha — os dois saldos batem.</div>
+    {% else %}
+      <div class="recon__check recon__check--pending">{% icon "clock" 14 %}Não fecha ainda — falta baixar ou classificar o que está em aberto.</div>
+    {% endif %}
+  </div>
+</div>

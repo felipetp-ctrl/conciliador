@@ -1,0 +1,19 @@
+{% extends "app/base_app.html" %}{% load conciliador_ds %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div style="padding-top:24px"><a class="back-link" href="{% url 'fechamento' periodo.slug %}">{% icon "arrow-left" 16 %}{% if view == 'contador' %}Demonstrativo{% else %}Fechamento{% endif %} de {{ periodo.label|lower }}</a></div>
+<header style="padding:28px 0 32px" class="stack">
+  <div>{% include "ds/status_badge.html" with status=item.status direction=item.direction %}</div>
+  <h1 class="page-header__title page-header__title--h1">{{ titulo }}</h1>
+</header>
+{% include "ds/match_pair_full.html" with doc=doc_exibido %}
+{% if item.facts %}<div class="row" style="justify-content:center;margin-top:16px">{% include "ds/rule_stamp.html" with rule=item.rule facts=item.facts signed_by=item.signed_by %}</div>{% endif %}
+<div class="detail-grid">
+  <section class="card"><div class="card__head"><div class="micro">{% if view == 'contador' %}Situação{% else %}O que fazer{% endif %}</div></div>
+    <div id="acoes">{% include "app/_acoes.html" %}</div>
+  </section>
+  <aside class="card card--subtle"><div class="card__head"><div class="micro">Registro</div></div>
+    <ol class="trail">{% for e in item.audit %}<li><span class="mono mono--12 mono--muted">{{ e.at|date:"d/m H:i" }}</span><div><div style="color:var(--text-strong)">{{ e.action }}</div><div class="trail__who">{{ e.who }}</div></div></li>{% endfor %}</ol>
+  </aside>
+</div>
+{% endblock %}

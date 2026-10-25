@@ -1,0 +1,2 @@
+{% load conciliador_ds %}{# status, view (dono|contador), direction (in|out), size (sm), label (opcional) #}
+<span class="badge badge--{{ status|status_tone }}{% if size %} badge--{{ size }}{% endif %}">{% if label %}{{ label }}{% else %}{% status_label status view|default:"dono" direction|default:"in" %}{% endif %}</span>

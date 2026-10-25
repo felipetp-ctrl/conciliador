@@ -104,6 +104,15 @@ pelo Claude terminam a mensagem com uma linha em branco e o trailer
 - **Escape fórmulas** ao exportar CSV/planilha com texto não confiável (`memo`, `xNome`/
   `counterpart_name`, `descricao`): prefixe com `'` valores que começam com `=`, `+`, `-`, `@`,
   tab ou CR.
+- **Divergência é só de valor.** A data que vale é a de compensação (a do banco). Pagar antes ou
+  depois do vencimento é fato a registrar na explicação, nunca divergência.
+- **Saldo só "bate" com saldo inicial conhecido.** O OFX traz `LEDGERBAL` (final) e não o inicial;
+  sem `BankAccount.opening_balance_cents` o painel mostra o saldo informado e diz que não dá para
+  conferir — nunca afirma que fecha.
+- **O painel é por conta.** `reconcile(company, account)` filtra os lançamentos pela conta antes de
+  sugerir; os itens esperados são da empresa (não da conta).
+- **Juros/multa não são erro.** Boleto pago em atraso chega maior no banco: a linha de divergência
+  diz o valor a mais e a distância do vencimento, sem tratar como falha.
 
 ## Regras para IAs
 

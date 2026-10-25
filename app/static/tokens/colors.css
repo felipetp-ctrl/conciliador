@@ -1,0 +1,59 @@
+:root{
+  /* ---- neutros base: cinza neutro quase branco + tinta grafite ---- */
+  --paper-0:#FFFFFF;
+  --paper-50:#FAFAFA;
+  --paper-100:#F4F5F5;
+  --paper-200:#ECEDEE;
+  --paper-300:#E2E4E6;
+  --paper-400:#C8CCD0;
+  --ink-300:#9DA2A8;
+  --ink-400:#787E86;
+  --ink-500:#5A6069;
+  --ink-700:#30353C;
+  --ink-900:#0F1215;
+
+  /* ---- acento único: "fechou" (verde-tinta de razão) ---- */
+  --accent-50:#EAF1EC;
+  --accent-100:#D3E3D8;
+  --accent-500:#1F5C45;
+  --accent-600:#174A37;
+  --accent-700:#10382A;
+
+  /* ---- estados da conciliação ---- */
+  --ok-500:#2F7A4F;   --ok-50:#E9F3EC;   --ok-200:#BFDCC9;
+  --warn-500:#9A6400; --warn-50:#FAF1DE; --warn-200:#EBD3A0;
+  --late-500:#B3321F; --late-50:#FBEAE6; --late-200:#EFC0B6;
+  --unid-500:#4F6275; --unid-50:#ECF0F4; --unid-200:#C6D0DA;
+  --div-500:#9C2F5E;  --div-50:#F8E9EF;  --div-200:#E6BCCD;
+
+  /* ---- aliases semânticos (as telas só usam estes) ---- */
+  --bg-page:var(--paper-50);
+  --bg-subtle:var(--paper-100);
+  --surface-card:var(--paper-0);
+  --surface-sunken:var(--paper-200);
+  --surface-inverse:var(--ink-900);
+  --border-hairline:var(--paper-300);
+  --border-strong:var(--paper-400);
+  --border-focus:var(--accent-500);
+
+  --text-strong:var(--ink-900);
+  --text-body:var(--ink-700);
+  --text-muted:var(--ink-500);
+  --text-faint:var(--ink-400);
+  --text-on-inverse:var(--paper-100);
+  --text-on-accent:#FFFFFF;
+
+  --accent:var(--accent-500);
+  --accent-hover:var(--accent-600);
+  --accent-press:var(--accent-700);
+  --accent-soft:var(--accent-50);
+
+  --status-ok:var(--ok-500);         --status-ok-soft:var(--ok-50);       --status-ok-line:var(--ok-200);
+  --status-pending:var(--warn-500);  --status-pending-soft:var(--warn-50);--status-pending-line:var(--warn-200);
+  --status-late:var(--late-500);     --status-late-soft:var(--late-50);   --status-late-line:var(--late-200);
+  --status-unid:var(--unid-500);     --status-unid-soft:var(--unid-50);   --status-unid-line:var(--unid-200);
+  --status-div:var(--div-500);       --status-div-soft:var(--div-50);     --status-div-line:var(--div-200);
+
+  --amount-in:var(--ok-500);
+  --amount-out:var(--ink-900);
+}

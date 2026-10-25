@@ -1,0 +1,39 @@
+{% load conciliador_ds %}{# item: ReconItem; doc: o documento a exibir (item.doc ou candidato); view #}
+<div class="pair pair--full pair--{{ item.status }}{% if item.status|node_closed %} pair--closed{% endif %}">
+  {% if item.bank_many %}
+  <div class="pair__side pair__side--many">
+    <div class="pair__who">{% if view == 'contador' %}Extrato{% else %}Banco{% endif %} · {{ item.bank_many|length }} lançamentos</div>
+    {% for b in item.bank_many %}<div class="pair__many-line"><div><div class="pair__title">{{ b.memo }}</div><div class="pair__meta"><span>Conta</span><span class="mono">{{ b.account }} · {{ b.date|date:"d/m/Y" }}</span></div></div>{{ b.cents|brl:"always" }}</div>{% endfor %}
+  </div>
+  {% elif item.bank %}
+  <div class="pair__side">
+    <div class="pair__who">{% if view == 'contador' %}Extrato{% else %}Banco{% endif %} · <span class="mono">{{ item.bank.date|date:"d/m/Y" }}</span></div>
+    <div class="pair__title">{{ item.bank.memo }}</div>
+    {{ item.bank.cents|brl:"always,lg" }}
+    <div class="pair__meta"><span>Conta</span><span class="mono">{{ item.bank.account }}</span></div>
+    <div class="pair__meta"><span>Histórico</span><span class="mono mono--12">{{ item.bank.raw }}</span></div>
+    <div class="pair__meta"><span>FITID</span><span class="mono mono--12 mono--muted">{{ item.bank.fitid }}</span></div>
+  </div>
+  {% else %}
+  <div class="pair__side pair__side--empty"><div class="pair__who">{% if view == 'contador' %}Extrato{% else %}Banco{% endif %}</div><div class="pair__empty">{% if view == 'contador' %}Sem lançamento no extrato{% else %}Nenhum pagamento encontrado no banco{% endif %}</div></div>
+  {% endif %}
+  <div class="pair__link" aria-hidden="true"><div class="pair__node">{% icon item.status|node_icon 18 %}</div></div>
+  {% if item.doc_many %}
+  <div class="pair__side pair__side--many">
+    <div class="pair__who">Documentos · {{ item.doc_many|length }}</div>
+    {% for d in item.doc_many %}<div class="pair__many-line"><div><div class="pair__title">{{ d.kind }} {{ d.number }} · {{ d.counterpart }}</div><div class="pair__meta"><span>Venc.</span><span class="mono">{{ d.due|date:"d/m/Y" }}</span></div></div>{% if d.cents > 0 %}{{ d.cents|brl:"always" }}{% else %}{{ d.cents|brl:"auto" }}{% endif %}</div>{% endfor %}
+  </div>
+  {% elif doc %}
+  <div class="pair__side">
+    <div class="pair__who">{{ doc.kind }}{% if doc.due %} · venc. <span class="mono">{{ doc.due|date:"d/m/Y" }}</span>{% endif %}</div>
+    <div class="pair__title">{{ doc.counterpart }}</div>
+    {% if doc.cents > 0 %}{{ doc.cents|brl:"always,lg" }}{% else %}{{ doc.cents|brl:"auto,lg" }}{% endif %}
+    {% if doc.number %}<div class="pair__meta"><span>Número</span><span class="mono">{{ doc.number }}</span></div>{% endif %}
+    {% if doc.doc_id %}<div class="pair__meta"><span>Contraparte</span>{{ doc.doc_id|doc }}</div>{% endif %}
+    {% if doc.issued %}<div class="pair__meta"><span>Emissão</span><span class="mono">{{ doc.issued|date:"d/m/Y" }}</span></div>{% endif %}
+    {% if doc.gross_cents %}<div class="pair__meta"><span>Bruto · retenções</span><span>{{ doc.gross_cents|brl:"never,sm,muted" }} · {{ doc.withheld_cents|brl:"never,sm,muted" }}</span></div>{% endif %}
+  </div>
+  {% else %}
+  <div class="pair__side pair__side--empty"><div class="pair__who">Documento</div><div class="pair__empty">{% if view == 'contador' %}Sem documento correspondente{% else %}Nenhuma nota ou conta encontrada{% endif %}</div></div>
+  {% endif %}
+</div>

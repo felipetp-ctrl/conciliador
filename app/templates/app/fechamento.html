@@ -1,0 +1,31 @@
+{% extends "app/base_app.html" %}{% load conciliador_ds %}
+{% block title %}{{ periodo.label }}{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div class="page-header__text">
+    <div class="micro" style="margin-bottom:14px">Fechamento · {{ conta.label }}</div>
+    <h1 class="page-header__title">{{ periodo.label }}</h1>
+    <p class="page-header__lede">{% if counts.a_confirmar %}{{ counts.a_confirmar }} vínculo{{ counts.a_confirmar|pluralize:"s" }} espera{{ counts.a_confirmar|pluralize:"m" }} sua confirmação.{% else %}Nenhuma sugestão esperando confirmação.{% endif %} {% if balance.balanced %}O fechamento fecha: os dois saldos batem.{% else %}O fechamento não fecha ainda — há {{ balance.n_unexplained }} lançamento{{ balance.n_unexplained|pluralize }} sem explicação.{% endif %}</p>
+  </div>
+  <div class="page-header__actions">
+    {% if view == 'dono' and counts.a_confirmar_lote %}<button class="btn btn--primary" hx-post="{% url 'aprovar_lote' %}?conta={{ conta.id }}" hx-target="body" hx-confirm="Confirmar as {{ counts.a_confirmar_lote }} sugestões de alta confiança?">{% icon "check" 16 %}Confirmar {{ counts.a_confirmar_lote }} sugestõ{{ counts.a_confirmar_lote|pluralize:"es,ão" }}</button>{% endif %}
+    <a class="btn" href="{% url 'importacao' %}">{% icon "upload" 16 %}Importar arquivos</a>
+    <a class="btn btn--primary" href="{% url 'demonstrativo_pdf' periodo.slug %}">{% icon "file-down" 16 %}Exportar demonstrativo</a>
+  </div>
+</header>
+
+{# Totais: recarregam sozinhos quando uma linha muda (o servidor responde com HX-Trigger: totais) #}
+<div id="totais" hx-get="{% url 'fechamento_totais' periodo.slug %}" hx-trigger="totais from:body" hx-swap="outerHTML">
+  {% include "app/_totais.html" %}
+</div>
+
+<section class="section" aria-labelledby="h-lista">
+  <div class="section__head">
+    <h2 class="h2" id="h-lista">Banco ⟷ documentos</h2>
+    <nav class="tabs tabs--pill" aria-label="Filtrar por situação">
+      {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-get="{% url 'fechamento_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}" hx-target="#lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
+    </nav>
+  </div>
+  {% include "app/_lista.html" %}
+</section>
+{% endblock %}

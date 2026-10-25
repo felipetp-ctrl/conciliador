@@ -1,0 +1,4 @@
+<div id="lista" class="card card--flush" role="table" aria-label="Lançamentos e documentos">
+  <div class="ledger-head micro" role="row"><span role="columnheader">Situação</span><span role="columnheader">Banco</span><span></span><span role="columnheader">Documento</span><span></span></div>
+  {% for item in items %}{% include "app/_ledger_row.html" %}{% empty %}<div class="ledger-empty">Nenhum item nesta situação.</div>{% endfor %}
+</div>

@@ -1,0 +1,1 @@
+{% load conciliador_ds %}<div class="ledger-row__cell"><div style="min-width:0"><div class="ledger-row__top">{{ d.kind }} {{ d.number }} · venc. {{ d.due|date:"d/m" }}</div><div class="ledger-row__title">{{ d.counterpart }}</div></div>{% if d.cents > 0 %}{{ d.cents|brl:"always" }}{% else %}{{ d.cents|brl }}{% endif %}</div>

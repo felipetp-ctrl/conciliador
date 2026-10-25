@@ -1,0 +1,151 @@
+{% load static conciliador_ds %}<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>conciliador — o extrato e as notas, frente a frente</title>
+<meta name="description" content="Conciliação financeira para pequenas empresas: cruza o extrato OFX com NF-e, NFS-e e contas, mostra o que bateu e o que ficou sem explicação.">
+<link rel="stylesheet" href="{% static 'styles.css' %}">
+<link rel="stylesheet" href="{% static 'ds/ds.css' %}">
+<link rel="stylesheet" href="{% static 'site/landing.css' %}">
+<script src="{% static 'site/motion.js' %}" defer></script>
+</head>
+<body class="site">
+<header class="site-nav"><div class="wrap site-nav__inner">
+  <a class="site-nav__brand" href="/">conciliador</a>
+  <nav class="site-nav__links" aria-label="Site"><a href="#como-funciona">Como funciona</a><a href="#contadores">Para contadores</a><a href="#seguranca">Segurança</a><a href="#codigo-aberto">Código aberto</a></nav>
+  <div class="row" style="gap:8px"><a class="btn btn--ghost btn--sm" href="{% url 'login' %}">Entrar</a><a class="btn btn--primary btn--sm" href="{% url 'signup' %}">Começar</a></div>
+</div></header>
+<main>
+
+{# ===== 0. HERO (cena fixa) ===== #}
+<section class="scene hero" data-scene style="--len:320vh" aria-label="Apresentação">
+  <div class="scene__stage">
+    <div class="hero__glow tk" style="--a:0;--b:.32"></div>
+    <div class="hero__copy tk" style="--a:0;--b:.32">
+      <h1 class="hero__title"><span class="hero__line" style="--d:120ms">O extrato e as notas,</span><span class="hero__line" style="--d:240ms" data-on="0.9">frente a frente.</span></h1>
+      <div class="hero__intro">
+        <p class="hero__lede hero__line" style="--d:360ms">Envie o OFX do banco e as suas NF-e, NFS-e e contas. O conciliador cruza os dois lados e mostra o que bateu. Você confere e confirma.</p>
+        <div class="hero__ctas hero__line" style="--d:480ms"><a class="btn btn--primary btn--lg" href="{% url 'signup' %}">Fechar meu mês{% icon "arrow-right" 16 %}</a><a class="btn btn--lg" href="#como-funciona">Ver como funciona</a></div>
+      </div>
+    </div>
+    <div class="hero__panel-pos tk" style="--a:0;--b:.32">
+      <div class="hero__panel" data-fit="0.73">
+        <div class="row" style="justify-content:space-between"><div><div class="micro">Fechamento · Banco Exemplo</div><div style="font:600 20px var(--font-sans);color:var(--text-strong);margin-top:4px">Outubro de 2026</div></div>
+          <span class="flip" data-on="0.56"><span class="flip__off"><span class="badge badge--confirm">2 para confirmar</span></span><span class="flip__on"><span class="badge badge--confirm">1 para confirmar</span></span></span></div>
+        <div class="hero__row tk" style="--a:.36;--b:.5">
+          <div class="flip" data-on="0.56">
+            <span class="flip__off">{% include "site/_pair.html" with status="a_confirmar" b_date="21/10/2026" b_memo="Pix recebido · Alfa Serviços" b_cents=190000 d_who="NFS-e · venc. 20/10" d_title="Alfa Serviços Ltda" d_cents=190000 %}</span>
+            <span class="flip__on">{% include "site/_pair.html" with status="conciliado" b_date="21/10/2026" b_memo="Pix recebido · Alfa Serviços" b_cents=190000 d_who="NFS-e · venc. 20/10" d_title="Alfa Serviços Ltda" d_cents=190000 %}</span>
+          </div>
+          <div class="hero__stamp" data-on="0.58">{% include "ds/rule_stamp.html" with facts=hero_facts signed_by="confirmado por você" size="sm" %}</div>
+        </div>
+        <div class="hero__row tk" style="--a:.49;--b:.63">{% include "site/_pair.html" with status="a_confirmar" b_date="18/10/2026" b_memo="Boleto · Papelaria Beta" b_cents=-48750 d_who="NF-e · venc. 18/10" d_title="Papelaria Beta ME" d_cents=-48750 %}</div>
+        <div class="hero__row tk" style="--a:.62;--b:.76">{% include "site/_pair.html" with status="nao_identificado" b_date="02/10/2026" b_memo="Tarifa pacote de serviços" b_cents=-1990 %}</div>
+      </div>
+    </div>
+    <div class="hero__cue" aria-hidden="true"><span>Role para ver</span>{% icon "chevron-down" 16 %}</div>
+  </div>
+</section>
+
+{# ===== 1. TRÊS PERGUNTAS (junção) ===== #}
+<section class="scene" data-scene style="--len:300vh" aria-label="Três perguntas">
+  <div class="scene__stage"><div class="fit" data-fit><div style="width:100%;max-width:1080px;display:flex;flex-direction:column;gap:40px">
+    <div style="text-align:center" class="tk" ><div class="micro" style="margin-bottom:16px">O fechamento do mês</div><h2 class="scene-title">Três perguntas. <span class="faint">Respostas com nota e lançamento.</span></h2></div>
+    <div class="stack">
+      {% for qa in perguntas %}{# a = .10 + i*.24 ; b = a + .20 — calcule na view #}
+      <div class="qa tk" style="--a:{{ qa.a }};--b:{{ qa.b }}">
+        <div class="qa__q"><span class="qa__n">{{ qa.n }}</span><span class="qa__text">{{ qa.pergunta }}</span></div>
+        <div class="join" aria-hidden="true"><span class="join__line join__line--l"></span><span class="join__line join__line--r"></span><span class="join__node" data-on="{{ qa.b }}">{% icon "check" 16 %}</span></div>
+        <div class="qa__a">{% for s in qa.respostas %}<div class="stat" style="gap:4px"><span class="stat__label" style="font-size:12.5px"><span class="dot dot--{{ s.tone }}"></span>{{ s.label }}</span>{{ s.cents|brl:"never,neutral" }}</div>{% endfor %}{% if qa.nota %}<span class="faint" style="font-size:13px">{{ qa.nota }}</span>{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="tk muted" style="--a:.86;--b:.95;opacity:var(--k);text-align:center;margin:0">Tudo a partir do seu extrato e das suas notas. <b style="color:var(--text-strong)">Sem planilha.</b></p>
+  </div></div></div>
+</section>
+
+{# ===== 2. CONVERGÊNCIA ===== #}
+<section class="scene conv" data-scene style="--len:280vh" aria-label="Como os dois lados se fecham">
+  <div class="scene__stage"><div class="fit" data-fit style="gap:64px">
+    <div class="conv__titles tk" style="--a:.45;--b:.66"><h2 class="scene-title conv__t1">De um lado, o banco. Do outro, as notas.</h2><h2 class="scene-title conv__t2">Quando os dois lados se fecham, <span style="color:var(--accent)">bateu.</span></h2></div>
+    <div class="row tk" style="--a:.08;--b:.55;justify-content:center;width:100%;flex-wrap:nowrap;gap:0">
+      <div class="conv__card conv__card--l"><div class="micro">Banco · 21/10/2026</div><div class="pair__title">Pix recebido · Alfa Serviços</div>{{ 190000|brl:"always,lg" }}<span class="mono mono--12 mono--muted">PIX REC 12345678000195</span></div>
+      <div class="join tk" style="--a:.42;--b:.6" aria-hidden="true"><span class="join__line join__line--l"></span><span class="join__line join__line--r"></span><span class="join__node" data-on="0.62">{% icon "check" 20 %}</span></div>
+      <div class="conv__card conv__card--r"><div class="micro">NFS-e · venc. 20/10/2026</div><div class="pair__title">Alfa Serviços Ltda</div>{{ 190000|brl:"always,lg" }}<span class="mono mono--12 mono--muted">nº 000123 · {{ "12345678000195"|doc:"nokind" }}</span></div>
+    </div>
+    <div class="conv__stamp tk" style="--a:.7;--b:.82">{% include "ds/rule_stamp.html" with facts=conv_facts %}<span class="muted" style="font-size:14px">E só vira <b style="color:var(--text-strong)">Recebido</b> quando você confirma.</span></div>
+  </div></div>
+</section>
+
+{# ===== 3. TRIAGEM ===== #}
+<section class="scene" data-scene style="--len:300vh" aria-label="Triagem dos lançamentos">
+  <div class="scene__stage"><div class="fit" data-fit>
+    <h2 class="scene-title" style="max-width:820px;margin-bottom:48px">Tudo que entrou e saiu, <span class="faint">cada coisa no seu lugar.</span></h2>
+    <div class="sort">
+      {% for col in colunas %}<div class="sort__col tk" style="--a:.08;--b:.2;left:{{ col.x }}%"><div class="row" style="gap:8px;font-weight:600;color:var(--text-strong)"><span class="dot dot--{{ col.tone }}"></span>{{ col.label }}</div><div class="faint" style="font-size:12.5px">{{ col.sub }}</div><div style="margin-top:10px;border-top:1px solid var(--border-strong)"></div></div>{% endfor %}
+      {% for r in triagem %}{# x0=34.25 y0=150+i*12 · x1=col*34.25 y1=72+slot*70 · r=(i-3)*2.2 · a=.14+i*.075 b=a+.22 — calcule na view #}
+      <div class="sort__card tk" data-on="{{ r.b }}" style="--a:{{ r.a }};--b:{{ r.b }};--x0:{{ r.x0 }};--y0:{{ r.y0 }};--x1:{{ r.x1 }};--y1:{{ r.y1 }};--r:{{ r.r }};--c:var(--status-{{ r.tone }});z-index:{{ r.z }}">
+        <span class="sort__dot"></span><div style="flex:1;min-width:0"><div class="mono mono--12 mono--faint">{{ r.date }}</div><div class="ledger-row__title" style="font-size:13.5px">{{ r.memo }}</div></div>{{ r.cents|brl:"always,sm" }}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="tk mono muted" style="--a:.82;--b:.92;opacity:var(--k);font-size:13.5px;margin-top:8px">3 bateram · 2 só no banco · 2 só nos documentos</div>
+  </div></div>
+</section>
+
+{# ===== 4. COMO FUNCIONA (estático + reveal) ===== #}
+<section class="sec" id="como-funciona"><div class="wrap">
+  <div class="sec-head"><div class="micro" data-reveal style="--y:12px;--blur:0;margin-bottom:18px">Como funciona</div><h2 class="sec-title" data-reveal style="--d:80ms;--y:36px">Dois registros dos mesmos fatos. Toda diferença, explicada.</h2><p class="sec-lede" data-reveal style="--d:200ms;--y:20px">O mesmo princípio da conciliação contábil, sem planilha: o que o banco registrou de um lado, o que você esperava receber ou pagar do outro.</p></div>
+  <div class="steps">{% for s in passos %}
+    <div class="auto-2"><div data-reveal style="order:{{ s.order_text }}"><div class="mono faint" style="font-size:13px">Passo {{ forloop.counter }}</div><h3 style="margin:12px 0 0;font:600 30px/1.15 var(--font-sans);letter-spacing:-.025em;color:var(--text-strong)">{{ s.titulo }}</h3><p class="muted" style="margin:14px 0 0;font-size:16.5px;max-width:420px">{{ s.texto }}</p></div>
+      <div class="step__visual" data-reveal style="--d:120ms;--y:48px;--s:.96;order:{{ s.order_visual }}">{% include s.visual %}</div></div>
+  {% endfor %}</div>
+</div></section>
+
+{# ===== 5. FITA DE RAZÃO ===== #}
+<section class="scene" data-scene style="--len:260vh" aria-label="O saldo fecha">
+  <div class="scene__stage"><div class="fit" data-fit><div class="auto-2" style="gap:72px;width:100%;max-width:1136px">
+    <div><div class="micro" style="margin-bottom:18px">O fechamento</div><h2 class="scene-title" style="text-align:left">O saldo fecha. <span class="faint">Ou você fica sabendo.</span></h2><p class="sec-lede" style="max-width:460px">Saldo inicial, mais o que entrou, menos o que saiu, conferido contra o saldo que o próprio banco informa. Se faltar um extrato ou houver lançamento repetido, aparece aqui.</p></div>
+    <div class="tape" data-on="0.76">
+      {% for t in fita %}{# a=.10+i*.12 b=a+.16 #}<div class="tape__row tk" style="--a:{{ t.a }};--b:{{ t.b }}"><span class="muted" style="font-size:15px">{{ t.label }}</span><span class="tape__val"><span class="tape__op">{{ t.op }}</span><span data-count="{{ t.cents }}" data-from="{{ t.a }}" data-to="{{ t.b }}">0,00</span></span></div>{% endfor %}
+      <div class="tape__rule tk" style="--a:.46;--b:.56"></div>
+      <div class="tape__row tk" style="--a:.56;--b:.7"><span style="font-size:15px;font-weight:600;color:var(--text-strong)">Saldo final</span><span class="tape__val tape__val--total"><span class="tape__op" style="font-size:.55em">R$</span><span data-count="{{ fita_total }}" data-from=".56" data-to=".7">0,00</span></span></div>
+      <div class="tape__ok tk" style="--a:.72;--b:.8"><span class="row" style="gap:8px;font-size:14px;font-weight:600;color:var(--status-ok)">{% icon "circle-check" 18 %}Bate com o saldo do banco</span><span class="mono mono--12 mono--muted">LEDGERBAL {{ fita_total|brl:"never,nocur" }}</span></div>
+    </div>
+  </div></div></div>
+</section>
+
+{# ===== 6. DUAS LÍNGUAS ===== #}
+<section class="scene" id="contadores" data-scene style="--len:240vh" aria-label="Empresário e contador">
+  <div class="scene__stage"><div class="fit" data-fit style="gap:40px;max-width:880px">
+    <div class="vocab__switch tk" style="--a:.3;--b:.55"><span class="vocab__thumb"></span><span class="vocab__opt">Empresário</span><span class="vocab__opt">Contador</span></div>
+    <div class="vocab__titles tk" style="--a:.3;--b:.55"><h2 class="scene-title vocab__t1">Para o dono: recebido, pendente, atrasado.</h2><h2 class="scene-title vocab__t2">Para o contador: conciliado, só no banco, divergência.</h2></div>
+    <div class="vocab__card">{% for s in vocab_status %}{# a=.2+i*.06 b=a+.2 #}
+      <div class="vocab__row"><div class="vocab__swap tk" style="--a:{{ s.a }};--b:{{ s.b }}"><span>{% include "ds/status_badge.html" with status=s.status %}</span><span>{% include "ds/status_badge.html" with status=s.status view="contador" %}</span></div><span class="mono mono--12 mono--faint">mesmo item</span></div>
+    {% endfor %}</div>
+    <p class="muted" style="margin:0;font-size:16px;text-align:center;max-width:560px">Uma conciliação só. O contador entra com acesso somente leitura e exporta o demonstrativo em PDF ou CSV.</p>
+  </div></div>
+</section>
+
+{# ===== 7. SEGURANÇA ===== #}
+<section class="security" id="seguranca"><div class="wrap" style="padding-top:112px;padding-bottom:112px">
+  <div class="sec-head"><div class="micro" data-reveal style="--y:12px;--blur:0;margin-bottom:18px">Segurança e privacidade</div><h2 class="sec-title" data-reveal style="--d:80ms">Dados financeiros pedem uma ferramenta séria.</h2></div>
+  <div class="auto-2" style="gap:0 64px;align-items:start">{% for s in seguranca %}<div class="security__item" data-reveal style="--d:{{ forloop.counter0 }}00ms">{% icon s.icon 20 %}<div><div style="font-size:18px;font-weight:600">{{ s.titulo }}</div><p style="margin:8px 0 0;font-size:15px;color:var(--ink-300)">{{ s.texto }}</p></div></div>{% endfor %}</div>
+</div></section>
+
+{# ===== 8. CÓDIGO ABERTO ===== #}
+<section class="sec" id="codigo-aberto"><div class="wrap"><div class="auto-2" style="align-items:end">
+  <div class="sec-head"><div class="micro" data-reveal style="--y:12px;--blur:0;margin-bottom:18px">Código aberto</div><h2 class="sec-title" data-reveal style="--d:80ms">Regras que você pode ler.</h2><p class="sec-lede" data-reveal style="--d:200ms">O motor de conciliação e os leitores de OFX, NF-e e NFS-e são uma biblioteca aberta (Apache-2.0). O app é AGPL. Use na nuvem, ou instale na sua máquina.</p></div>
+  <div style="margin-bottom:56px">{% for r in regras %}<div class="rules__row" data-reveal style="--d:{{ forloop.counter0 }}10ms;--y:14px;--blur:0"><span class="faint">{{ r.nome }}</span><span style="color:var(--text-strong)">{{ r.fatos }}</span></div>{% endfor %}<div class="muted" style="padding-top:18px;border-top:1px solid var(--border-hairline);font-size:14px">Janela padrão: 5 dias antes a 10 dias depois do vencimento.</div></div>
+</div></div></section>
+
+{# ===== 9. CTA ===== #}
+<section class="wrap" style="padding-bottom:112px" data-scene="through"><div class="cta">
+  <h2 style="margin:0;font:600 clamp(36px,5vw,64px)/1.02 var(--font-sans);letter-spacing:-.04em;color:var(--text-strong)">Feche o mês em minutos.</h2>
+  <p class="muted" style="margin:20px auto 0;font-size:18px;max-width:520px">Comece com o extrato de um mês e as notas dele.</p>
+  <div class="row" style="justify-content:center;margin-top:36px;gap:12px"><a class="btn btn--primary btn--lg" href="{% url 'signup' %}">Fechar meu mês{% icon "arrow-right" 16 %}</a><a class="btn btn--lg" href="mailto:contato@exemplo.com.br">Falar com a gente</a></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="wrap site-footer__inner"><span class="site-nav__brand" style="font-size:16px">conciliador</span><div class="row" style="gap:24px"><a href="/privacidade">Privacidade</a><a href="/termos">Termos</a><a href="/seguranca">Segurança</a><a href="https://github.com/">Código-fonte</a></div></div></footer>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{% load conciliador_ds %}{# tone (info|ok|pending|late|div), title, body, icon (opcional). Para ação, use {% include %} + bloco próprio. #}
+<div class="alert{% if tone and tone != 'info' %} alert--{{ tone }}{% endif %}" role="{% if tone == 'late' or tone == 'div' %}alert{% else %}status{% endif %}">
+  <span class="alert__icon">{% if icon %}{% icon icon 18 %}{% elif tone == 'ok' %}{% icon "circle-check" 18 %}{% elif tone == 'pending' %}{% icon "clock" 18 %}{% elif tone == 'late' %}{% icon "circle-alert" 18 %}{% elif tone == 'div' %}{% icon "triangle-alert" 18 %}{% else %}{% icon "info" 18 %}{% endif %}</span>
+  <div class="alert__body">{% if title %}<div class="alert__title">{{ title }}</div>{% endif %}{{ body }}</div>
+</div>

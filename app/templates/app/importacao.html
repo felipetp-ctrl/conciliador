@@ -1,0 +1,34 @@
+{% extends "app/base_app.html" %}{% load conciliador_ds %}
+{% block title %}Importação{% endblock %}
+{% block content %}
+<header class="page-header"><div class="page-header__text">
+  <div class="micro" style="margin-bottom:14px">Importação · {{ conta.label }}</div>
+  <h1 class="page-header__title">Envie o extrato e os documentos</h1>
+  <p class="page-header__lede">Os dois lados da conciliação: o que o banco registrou e o que você esperava receber ou pagar. Lemos os arquivos aqui e mostramos o que entrou.</p>
+</div></header>
+<div class="import-grid">
+  <div class="stack" style="gap:12px">
+    <div class="micro">Lado do banco</div>
+    {% include "ds/dropzone.html" with source=fontes.ofx job=jobs.ofx %}
+    {% if balance %}{% if balance.statement_consistent is True %}{% include "ds/alert.html" with tone="ok" title="Extrato fecha" body="Saldo inicial + movimentações = saldo final informado pelo banco." %}{% elif balance.statement_consistent is False %}{% include "ds/alert.html" with tone="late" title="O extrato não fecha" body="Pode faltar um arquivo ou haver lançamento duplicado." %}{% else %}{% include "ds/alert.html" with tone="info" icon="info" title="Saldo final do extrato" body="O arquivo informa o saldo final, mas não o inicial. Informe o saldo inicial para conferir o fechamento." %}{% endif %}{% endif %}
+  </div>
+  <div class="stack" style="gap:12px">
+    <div class="micro">Lado dos documentos</div>
+    <div class="import-grid__docs">
+      {% include "ds/dropzone.html" with source=fontes.nfe job=jobs.nfe %}
+      {% include "ds/dropzone.html" with source=fontes.nfse job=jobs.nfse %}
+      {% include "ds/dropzone.html" with source=fontes.csv job=jobs.csv %}
+    </div>
+    <div class="row" style="justify-content:flex-end;font-size:13.5px"><a href="{% url 'modelo_csv' %}">{% icon "download" 14 %} Baixar modelo CSV</a></div>
+    <div id="duplicatas" hx-get="{% url 'importacao_duplicatas' %}" hx-trigger="importado from:body">{% include "app/_duplicatas.html" %}</div>
+  </div>
+</div>
+<section class="section">
+  <div class="section__head"><h2 class="h2">Importações recentes</h2><a class="btn btn--primary" href="{% url 'fechamento' periodo.slug %}">Ver fechamento{% icon "arrow-right" 16 %}</a></div>
+  <div class="card card--flush" style="padding-top:16px"><div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Quando</th><th scope="col">Tipo</th><th scope="col">Arquivo</th><th scope="col">Resultado</th><th scope="col">Por</th></tr></thead>
+    <tbody>{% for i in importacoes %}<tr><td class="mono">{{ i.at|date:"d/m/Y H:i" }}</td><td class="mono mono--strong">{{ i.kind }}</td><td class="mono mono--12 mono--muted">{{ i.file_label }}</td><td>{{ i.result }}</td><td class="muted">{{ i.who }}</td></tr>{% empty %}<tr><td colspan="5" class="table__empty">Nenhuma importação ainda.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+  <p class="row faint" style="font-size:13px;margin-top:16px;gap:8px">{% icon "shield-check" 14 %}Os arquivos originais são apagados depois de lidos. Você pode mudar isso nas configurações.</p>
+</section>
+{% endblock %}

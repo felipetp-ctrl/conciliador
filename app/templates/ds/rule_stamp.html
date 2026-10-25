@@ -1,0 +1,5 @@
+{% load conciliador_ds %}{# rule (opcional), facts (lista de str), signed_by (opcional), size (sm). Só fatos. NUNCA score/percentual. #}
+<div class="stamp{% if size %} stamp--{{ size }}{% endif %}">
+  <span class="stamp__box">{% if rule %}<span class="stamp__rule">{{ rule }}</span><span class="stamp__bar">|</span>{% endif %}{% for f in facts %}{% if not forloop.first %}<span class="stamp__sep">·</span>{% endif %}<span>{{ f }}</span>{% endfor %}</span>
+  {% if signed_by %}<span class="stamp__sign">{% icon "pen-line" 14 %}{{ signed_by }}</span>{% endif %}
+</div>

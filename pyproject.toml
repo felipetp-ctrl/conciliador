@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["packages/*", "tools/*"]
+members = ["packages/*", "tools/*", "app"]
 
 [tool.uv.sources]
 conciliador-core = { workspace = true }
@@ -44,6 +44,13 @@ select = ["E", "F", "I", "B", "UP", "S", "DTZ"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
+# SECRET_KEY de dev; migrações e UI do design system (strings pt-BR longas);
+# script de build de ícones (baixa de unpkg + cache em /tmp).
+"app/conciliador/settings.py" = ["S105"]
+"app/ledger/migrations/*" = ["E501"]
+"app/conciliador_ui/**" = ["E501"]
+"tools/build_icons.py" = ["S108", "S310"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
+skips = ["B108", "B310"]
