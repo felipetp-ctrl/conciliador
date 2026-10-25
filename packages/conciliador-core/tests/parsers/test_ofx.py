@@ -15,8 +15,8 @@ CORPUS = Path(__file__).parent.parent / "corpus" / "ofx"
 
 # Arquivos do corpus sem lançamentos (não são extratos com movimento):
 #  - bank_small.ofx: apenas "<OFX></OFX>", sem extrato (deve dar ParseError).
-#  - error_message.ofx: resposta de erro do servidor, sem extrato (deve dar ParseError).
-#  - multiple_accounts.ofx: dois extratos válidos, porém sem nenhum STMTTRN.
+#  - error_message.ofx: STATUS de erro (2000) no STMTTRNRS: invalid_format com o erro do banco.
+#  - multiple_accounts.ofx: dois extratos no mesmo arquivo: unsupported_document.
 NO_TRANSACTIONS = {"bank_small.ofx", "error_message.ofx", "multiple_accounts.ofx"}
 CORPUS_FILES = sorted(p for p in CORPUS.glob("*.ofx") if p.name not in NO_TRANSACTIONS)
 
@@ -145,18 +145,78 @@ def test_corpus_empty_tags():
     assert st.account.branch is None
 
 
-@pytest.mark.parametrize("name", ["bank_small.ofx", "error_message.ofx"])
-def test_corpus_without_statement_raises(name):
+def test_corpus_without_statement_raises():
     with pytest.raises(ParseError) as e:
-        parse_ofx((CORPUS / name).read_bytes())
+        parse_ofx((CORPUS / "bank_small.ofx").read_bytes())
     assert e.value.code == "invalid_format"
 
 
-def test_corpus_multiple_accounts_uses_first_statement():
-    st = parse_ofx((CORPUS / "multiple_accounts.ofx").read_bytes())
-    assert st.account.account_number == "9100"
-    assert st.ledger_balance_cents == 11100
-    assert st.transactions == ()
+def test_corpus_bank_error_status_raises():
+    with pytest.raises(ParseError) as e:
+        parse_ofx((CORPUS / "error_message.ofx").read_bytes())
+    assert e.value.code == "invalid_format"
+    assert "erro" in e.value.message and "2000" in e.value.message
+    assert "General Server Error" in e.value.message
+
+
+def test_corpus_multiple_accounts_unsupported():
+    with pytest.raises(ParseError) as e:
+        parse_ofx((CORPUS / "multiple_accounts.ofx").read_bytes())
+    assert e.value.code == "unsupported_document"
+    assert e.value.message == ("O arquivo tem mais de uma conta; exporte uma conta por arquivo.")
+
+
+def _card(raw: bytes) -> bytes:
+    for old, new in [
+        (b"BANKMSGSRSV1", b"CREDITCARDMSGSRSV1"),
+        (b"STMTTRNRS", b"CCSTMTTRNRS"),
+        (b"STMTRS", b"CCSTMTRS"),
+        (b"BANKACCTFROM", b"CCACCTFROM"),
+    ]:
+        raw = raw.replace(old, new)
+    return raw
+
+
+def _block(raw: bytes, start: bytes, end: bytes) -> bytes:
+    i = raw.index(start)
+    return raw[i : raw.index(end, i) + len(end)]
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("second", ["bank", "card"])
+def test_second_statement_is_unsupported(version, second):
+    raw = make_ofx(TX, version=version)
+    if second == "bank":
+        extra = _block(raw, b"<STMTTRNRS>", b"</STMTTRNRS>")
+        raw = raw.replace(b"</BANKMSGSRSV1>", extra + b"</BANKMSGSRSV1>")
+    else:
+        extra = _card(_block(raw, b"<BANKMSGSRSV1>", b"</BANKMSGSRSV1>"))
+        raw = raw.replace(b"</OFX>", extra + b"</OFX>")
+    with pytest.raises(ParseError) as e:
+        parse_ofx(raw)
+    assert e.value.code == "unsupported_document"
+    assert "mais de uma conta" in e.value.message
+
+
+def test_card_only_statement_still_parses():
+    assert len(parse_ofx(_card(make_ofx(TX, version=2))).transactions) == 2
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("which", [0, 1])
+@pytest.mark.parametrize("card", [False, True])
+def test_bank_error_status_raises(version, which, card):
+    raw = make_ofx(TX, version=version)
+    raw = _card(raw) if card else raw
+    assert raw.count(b"<CODE>0") == 2  # SONRS e STMTTRNRS/CCSTMTTRNRS
+    idx = -1
+    for _ in range(which + 1):
+        idx = raw.index(b"<CODE>0", idx + 1)
+    raw = raw[:idx] + b"<CODE>15500" + raw[idx + len(b"<CODE>0") :]
+    with pytest.raises(ParseError) as e:
+        parse_ofx(raw)
+    assert e.value.code == "invalid_format"
+    assert "15500" in e.value.message and "banco" in e.value.message
 
 
 @pytest.mark.parametrize(
@@ -196,3 +256,17 @@ def test_invalid_balamt():
     with pytest.raises(ParseError) as e:
         parse_ofx(raw)
     assert e.value.code == "invalid_amount"
+
+
+def test_unclosed_sgml_status_still_checked_and_parsed():
+    raw = make_ofx(TX, version=1).replace(b"</STATUS>", b"")
+    assert len(parse_ofx(raw).transactions) == 2
+    bad = raw.replace(b"<CODE>0", b"<CODE>2000", 1)
+    with pytest.raises(ParseError) as e:
+        parse_ofx(bad)
+    assert e.value.code == "invalid_format" and "2000" in e.value.message
+
+
+def test_status_without_code_accepted():
+    raw = make_ofx(TX, version=2).replace(b"<CODE>0</CODE>", b"")
+    assert len(parse_ofx(raw).transactions) == 2

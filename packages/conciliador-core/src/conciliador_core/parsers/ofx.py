@@ -23,6 +23,10 @@ from conciliador_core.text import clean_text
 _TOKEN = re.compile(r"<(/?)([A-Za-z0-9.]+)>([^<]*)")
 _STATEMENTS = ("STMTRS", "CCSTMTRS")
 _ACCOUNTS = ("BANKACCTFROM", "CCACCTFROM")
+# Agregados cujo STATUS é conferido: sessão (SONRS) e resposta de extrato (conta ou cartão).
+_STATUS_OWNERS = ("SONRS", "STMTTRNRS", "CCSTMTTRNRS")
+_STATUS_FIELDS = ("CODE", "SEVERITY", "MESSAGE")
+_MULTIPLE = "O arquivo tem mais de uma conta; exporte uma conta por arquivo."
 
 
 def _invalid(message: str) -> ParseError:
@@ -46,6 +50,19 @@ def _tokens(text: str) -> Iterator[tuple[bool, str, str]]:
 def _clean(value: str) -> str:
     """Decodifica entidades HTML e normaliza com :func:`clean_text`."""
     return clean_text(unescape(value))
+
+
+def _check_status(owner: str, status: dict[str, str]) -> None:
+    """``CODE`` diferente de "0" é erro informado pelo banco (sem ``CODE``, nada a conferir)."""
+    code = status.get("CODE")
+    if code is None or code == "0":
+        return
+    detail = status.get("MESSAGE", "")[:80]
+    raise _invalid(
+        f"O banco informou um erro no OFX ({owner}, código {code[:10]})"
+        + (f": {detail}" if detail else "")
+        + ". Gere o extrato de novo no banco."
+    )
 
 
 def _parse_date(value: str) -> date:
@@ -90,10 +107,12 @@ def _transaction(fields: dict[str, str]) -> BankTransaction:
 
 
 def parse_ofx(data: bytes) -> Statement:
-    """Lê um OFX (v1 SGML ou v2 XML) e devolve o primeiro extrato (conta ou cartão).
+    """Lê um OFX (v1 SGML ou v2 XML) com um único extrato (conta ou cartão).
 
-    Se o arquivo tiver vários extratos, só o primeiro é lido. O histórico de cada
-    lançamento é ``NAME MEMO`` quando ambos existem e diferem, senão o que existir.
+    Mais de um extrato no arquivo levanta ``ParseError("unsupported_document")``; um
+    ``STATUS/CODE`` diferente de "0" em ``SONRS``, ``STMTTRNRS`` ou ``CCSTMTTRNRS`` (erro do
+    banco) levanta ``ParseError("invalid_format")``. O histórico de cada lançamento é
+    ``NAME MEMO`` quando ambos existem e diferem, senão o que existir.
     Qualquer entrada inválida levanta :class:`ParseError`.
     """
     if len(data) > MAX_FILE_BYTES:
@@ -109,6 +128,9 @@ def parse_ofx(data: bytes) -> Statement:
     txn_fields: dict[str, str] = {}
     transactions: list[BankTransaction] = []
     found_statement = False
+    status_owner: str | None = None
+    in_status = False
+    status: dict[str, str] = {}
 
     def flush_txn() -> None:
         nonlocal section
@@ -122,13 +144,35 @@ def parse_ofx(data: bytes) -> Statement:
             seen_ofx = True
         if not seen_ofx:
             continue
+        if in_status:
+            if tag in _STATUS_FIELDS:
+                if not closing:
+                    status.setdefault(tag, _clean(raw))
+                continue
+            # STATUS acaba no fechamento ou (SGML sem fechamento) na primeira outra tag
+            in_status = False
+            _check_status(status_owner or "", status)
+            if tag == "STATUS" and closing:
+                continue
+        if tag in _STATUS_OWNERS:
+            status_owner = None if closing else tag
+            continue
+        if tag == "STATUS" and not closing and status_owner is not None:
+            in_status = True
+            status = {}
+            continue
         if not in_stmt:
             if tag in _STATEMENTS and not closing:
+                if found_statement:
+                    raise ParseError("unsupported_document", _MULTIPLE)
                 in_stmt = found_statement = True
             continue
         if tag in _STATEMENTS:
             flush_txn()
-            break
+            if not closing:  # segundo extrato aberto antes de fechar o primeiro
+                raise ParseError("unsupported_document", _MULTIPLE)
+            in_stmt = False
+            continue
         if tag == "STMTTRN":
             flush_txn()
             if not closing:
@@ -152,8 +196,9 @@ def parse_ofx(data: bytes) -> Statement:
         target = {"txn": txn_fields, "acct": account, "bal": balance, None: head}.get(section)
         if target is not None and tag not in target:
             target[tag] = value
-    else:
-        flush_txn()
+    flush_txn()
+    if in_status:
+        _check_status(status_owner or "", status)
 
     if not seen_ofx or not found_statement:
         raise _invalid("O arquivo não é um extrato OFX válido.")
