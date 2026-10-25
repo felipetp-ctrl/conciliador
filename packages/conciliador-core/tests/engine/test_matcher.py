@@ -226,6 +226,14 @@ def test_config_validation():
     assert MatchConfig() == MatchConfig(5, 10, 0)
 
 
+def test_config_window_capped_at_60_days():
+    assert MatchConfig(days_before=60, days_after=60)
+    with pytest.raises(ValueError):
+        MatchConfig(days_before=61)
+    with pytest.raises(ValueError):
+        MatchConfig(days_after=61)
+
+
 def test_large_input_smoke():
     n = 3000
     txs = [tx(15, 1000 + i, key=f"k{i}") for i in range(n)]

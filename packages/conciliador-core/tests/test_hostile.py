@@ -213,3 +213,37 @@ def test_control_char_in_csv_documento_is_row_error():
     r = parse_items_csv(_csv(doc="529982\x0047725"))
     assert r.items == ()
     assert "contraparte_documento" in r.errors[0].message
+
+
+INVISIBLE = "‮⁦​﻿\u0085\u009b "
+
+
+def test_invisible_chars_in_ofx_memo_are_cleaned():
+    raw = make_ofx(
+        [SynthTxn(date(2026, 10, 1), 100, f"PIX{INVISIBLE}RECEBIDO MARK FIM", "F1")],
+        encoding="utf-8",
+    ).replace(b"MARK", b"&#x202E;")
+    assert parse_ofx(raw).transactions[0].memo == "PIX RECEBIDO FIM"
+
+
+def test_invisible_chars_in_csv_text_fields_are_cleaned():
+    r = parse_items_csv(_csv(nome=f"FORNE​CEDOR{INVISIBLE}X"))
+    assert r.items[0].counterpart_name == "FORNECEDOR X"
+
+
+def test_c1_or_bidi_in_csv_structured_field_is_row_error():
+    r = parse_items_csv(_csv(valor="1‮2,00"))
+    assert r.items == () and "valor" in r.errors[0].message
+    r = parse_items_csv(_csv(doc="529982\u009b24725"))
+    assert r.items == () and "contraparte_documento" in r.errors[0].message
+
+
+def test_invisible_chars_in_xnome_are_cleaned():
+    raw = make_nfe(
+        chave="3" * 44,
+        emit_cnpj=COMPANY,
+        dest_doc=OTHER,
+        issued_on=date(2026, 10, 1),
+        total_cents=1000,
+    ).replace(b"DESTINATARIO SINTETICO", f"DESTINA{INVISIBLE}TARIO".encode())
+    assert parse_fiscal_xml(raw, COMPANY).items[0].counterpart_name == "DESTINA TARIO"

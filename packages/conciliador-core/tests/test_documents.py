@@ -1,3 +1,4 @@
+import pytest
 from conciliador_core.documents import (
     cnpj_root,
     find_documents,
@@ -55,6 +56,12 @@ def test_find_documents_empty() -> None:
 def test_mask_cpf() -> None:
     assert mask_cpf("52998224725") == "***.982.247-**"
     assert mask_cpf("529.982.247-25") == "***.982.247-**"
+
+
+@pytest.mark.parametrize("bad", ["", "123", "529982247250", "11222333000181", "5299822472A"])
+def test_mask_cpf_rejects_non_cpf(bad: str) -> None:
+    with pytest.raises(ValueError):
+        mask_cpf(bad)
 
 
 def test_find_documents_deduplicates() -> None:

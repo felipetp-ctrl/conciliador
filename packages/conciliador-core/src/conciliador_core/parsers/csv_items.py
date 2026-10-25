@@ -15,6 +15,7 @@ from conciliador_core.errors import ParseError
 from conciliador_core.models import Direction, ExpectedItem, Source
 from conciliador_core.money import parse_brl_amount
 from conciliador_core.parsers._limits import MAX_FILE_BYTES
+from conciliador_core.text import clean_text, has_unsafe_chars
 
 MAX_ROWS = 10_000
 _REQUIRED = ("tipo", "valor", "vencimento")
@@ -23,8 +24,6 @@ _KNOWN = _REQUIRED + _OPTIONAL
 _DATE = re.compile(r"([0-9]{2})/([0-9]{2})/([0-9]{4})", re.ASCII)
 _CURRENCY = re.compile(r"R\$\s*", re.IGNORECASE)
 _NEWLINE = re.compile(r"\r\n|\r|\n")
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
-_SPACES = re.compile(r"\s+")
 _TEXT_FIELDS = ("contraparte_nome", "descricao")
 _DIRECTIONS = {"receber": Direction.INFLOW, "pagar": Direction.OUTFLOW}
 
@@ -167,10 +166,10 @@ def parse_items_csv(data: bytes) -> CsvParseResult:
                 idx = columns.get(name)
                 raw = record[idx] if idx is not None and idx < len(record) else ""
                 if name in _TEXT_FIELDS:
-                    cells[name] = _SPACES.sub(" ", _CONTROL.sub(" ", raw)).strip()
+                    cells[name] = clean_text(raw)
                 else:
                     cells[name] = raw.strip()
-                    if bad_field is None and _CONTROL.search(cells[name]):
+                    if bad_field is None and has_unsafe_chars(cells[name]):
                         bad_field = name
             if bad_field is not None:
                 errors.append(RowError(line, f"caractere inválido no campo {bad_field}"))

@@ -17,11 +17,10 @@ from conciliador_core.errors import ParseError
 from conciliador_core.models import BankAccountRef, BankTransaction, Statement
 from conciliador_core.money import parse_ofx_amount
 from conciliador_core.parsers._limits import MAX_FILE_BYTES
+from conciliador_core.text import clean_text
 
 # Sem aninhamento nem alternâncias sobrepostas: tempo linear na entrada.
 _TOKEN = re.compile(r"<(/?)([A-Za-z0-9.]+)>([^<]*)")
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
-_SPACES = re.compile(r"\s+")
 _STATEMENTS = ("STMTRS", "CCSTMTRS")
 _ACCOUNTS = ("BANKACCTFROM", "CCACCTFROM")
 
@@ -45,9 +44,8 @@ def _tokens(text: str) -> Iterator[tuple[bool, str, str]]:
 
 
 def _clean(value: str) -> str:
-    """Decodifica entidades HTML, remove caracteres de controle e colapsa espaços."""
-    text = _CONTROL.sub(" ", unescape(value))
-    return _SPACES.sub(" ", text).strip()
+    """Decodifica entidades HTML e normaliza com :func:`clean_text`."""
+    return clean_text(unescape(value))
 
 
 def _parse_date(value: str) -> date:

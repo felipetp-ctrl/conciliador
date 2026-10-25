@@ -9,8 +9,12 @@ _MAX_INTEGER_DIGITS = 15
 _DIGITS = re.compile(r"[0-9]+")
 
 
+_MAX_ECHO = 20  # caracteres da entrada que podem aparecer na mensagem
+
+
 def _invalid(text: str) -> ParseError:
-    return ParseError("invalid_amount", f"Valor monetário inválido: {text!r}.")
+    shown = text if len(text) <= _MAX_ECHO else text[:_MAX_ECHO] + "…"
+    return ParseError("invalid_amount", f"Valor monetário inválido: {shown!r}.")
 
 
 def parse_brl_amount(text: str) -> int:

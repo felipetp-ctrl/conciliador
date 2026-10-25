@@ -16,6 +16,7 @@ from conciliador_core.errors import ParseError
 from conciliador_core.models import Direction, ExpectedItem, Source
 from conciliador_core.money import parse_ofx_amount
 from conciliador_core.parsers._xml import safe_parse_xml
+from conciliador_core.text import clean_text
 
 NFE_NS = "http://www.portalfiscal.inf.br/nfe"
 NFSE_NS = "http://www.sped.fazenda.gov.br/nfse"
@@ -110,7 +111,8 @@ def _party(node: Element | None, ns: str = NFE_NS) -> _Party:
     cpf = _text(node, "CPF", ns)
     cnpj_norm = only_alnum(cnpj) if cnpj else None
     doc = cnpj_norm or (only_alnum(cpf) if cpf else None)
-    return _Party(cnpj_norm, doc, _text(node, "xNome", ns))
+    name = _text(node, "xNome", ns)
+    return _Party(cnpj_norm, doc, (clean_text(name) or None) if name else None)
 
 
 def _is_company(party: _Party, root: str) -> bool:

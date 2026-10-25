@@ -78,3 +78,19 @@ def test_parse_ofx_amount_invalid(text):
     with pytest.raises(ParseError) as e:
         parse_ofx_amount(text)
     assert e.value.code == "invalid_amount"
+
+
+@pytest.mark.parametrize("parser", [parse_brl_amount, parse_ofx_amount])
+def test_error_message_does_not_echo_long_input(parser) -> None:  # type: ignore[no-untyped-def]
+    huge = "9" * 1_000_000 + "x"
+    with pytest.raises(ParseError) as e:
+        parser(huge)
+    assert e.value.code == "invalid_amount"
+    assert len(e.value.message) < 80
+    assert "9" * 21 not in e.value.message and "…" in e.value.message
+
+
+def test_error_message_keeps_short_input() -> None:
+    with pytest.raises(ParseError) as e:
+        parse_brl_amount("12abc")
+    assert "'12abc'" in e.value.message and "…" not in e.value.message

@@ -62,3 +62,14 @@ def test_enums_and_statement() -> None:
     acct = BankAccountRef(bank_id="001", branch=None, account_number="1")
     st = Statement(account=acct, start=None, end=None, ledger_balance_cents=None, transactions=())
     assert st.transactions == ()
+
+
+def test_repr_hides_personal_data() -> None:
+    from dataclasses import replace
+
+    t = replace(_tx(100), memo="PIX FULANO DE TAL 529.982.247-25", documents=("52998224725",))
+    i = replace(_item(100), counterpart_doc="52998224725", counterpart_name="FULANO DE TAL")
+    for text in (repr(t), repr(i)):
+        assert "52998224725" not in text and "529.982.247-25" not in text
+        assert "FULANO" not in text
+    assert "amount_cents=100" in repr(t) and "id='x'" in repr(i)

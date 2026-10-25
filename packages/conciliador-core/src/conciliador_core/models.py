@@ -1,6 +1,6 @@
 """Modelos de domínio. Dinheiro sempre em centavos inteiros."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 
@@ -34,8 +34,8 @@ class BankTransaction:
     fitid: str | None
     posted_on: date
     amount_cents: int
-    memo: str
-    documents: tuple[str, ...]
+    memo: str = field(repr=False)  # pode conter nome e CPF/CNPJ: fora do repr
+    documents: tuple[str, ...] = field(repr=False)
     dedup_key: str
 
     @property
@@ -60,8 +60,8 @@ class ExpectedItem:
     amount_cents: int  # líquido, sempre positivo
     due_on: date
     issued_on: date | None
-    counterpart_doc: str | None
-    counterpart_name: str | None
+    counterpart_doc: str | None = field(repr=False)  # dado pessoal: fora do repr
+    counterpart_name: str | None = field(repr=False)
     document_number: str | None
     gross_cents: int | None = None
     withholdings: tuple[tuple[str, int], ...] = ()

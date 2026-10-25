@@ -71,6 +71,11 @@ def find_documents(text: str) -> tuple[str, ...]:
 
 
 def mask_cpf(cpf: str) -> str:
-    """Mascara um CPF no formato ``***.982.247-**``."""
+    """Mascara um CPF no formato ``***.982.247-**``.
+
+    Levanta ``ValueError`` se o valor, sem pontuação, não tiver exatamente 11 dígitos.
+    """
     s = only_alnum(cpf)
+    if len(s) != 11 or not (s.isascii() and s.isdigit()):
+        raise ValueError("mask_cpf espera um CPF com 11 dígitos")
     return f"***.{s[3:6]}.{s[6:9]}-**"

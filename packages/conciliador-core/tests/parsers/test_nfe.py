@@ -3,7 +3,12 @@ from datetime import date
 import pytest
 from conciliador_core.errors import ParseError
 from conciliador_core.models import Direction, Source
-from conciliador_core.parsers import MAX_FILE_BYTES, parse_fiscal_xml, safe_parse_xml
+from conciliador_core.parsers import (
+    MAX_FILE_BYTES,
+    MAX_XML_BYTES,
+    parse_fiscal_xml,
+    safe_parse_xml,
+)
 from conciliador_synth.fiscal import NFE_NS, make_nfe, make_nfe_cancellation
 
 CO = "11222333000181"
@@ -176,6 +181,12 @@ def test_xxe_and_billion_laughs_rejected(payload):
 
 def test_too_large():
     assert _code(b"<a>" + b" " * MAX_FILE_BYTES + b"</a>") == "too_large"
+
+
+def test_xml_cap_is_2_mib():
+    assert MAX_XML_BYTES == 2 * 1024 * 1024
+    assert _code(b"<a>" + b" " * MAX_XML_BYTES + b"</a>") == "too_large"
+    assert safe_parse_xml(b"<a>" + b" " * (MAX_XML_BYTES - 10) + b"</a>").tag == "a"
 
 
 def test_safe_parse_xml_returns_element():

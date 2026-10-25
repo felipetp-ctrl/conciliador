@@ -24,7 +24,7 @@ def mk(status: ItemStatus = ItemStatus.OPEN) -> ExpectedItem:
 
 def test_partial_before_due_is_pending() -> None:
     assert classify_item(mk(), 400, False, date(2026, 10, 1)) == ItemSituation(
-        ItemState.PENDING, 600
+        ItemState.PENDING, 600, 0
     )
 
 
@@ -34,17 +34,24 @@ def test_due_day_is_still_pending() -> None:
 
 def test_after_due_is_overdue() -> None:
     assert classify_item(mk(), 400, False, date(2026, 10, 11)) == ItemSituation(
-        ItemState.OVERDUE, 600
+        ItemState.OVERDUE, 600, 0
     )
 
 
 def test_closed_with_difference_is_settled() -> None:
-    assert classify_item(mk(), 400, True, date(2026, 12, 1)) == ItemSituation(ItemState.SETTLED, 0)
+    assert classify_item(mk(), 400, True, date(2026, 12, 1)) == ItemSituation(
+        ItemState.SETTLED, 0, 0
+    )
 
 
 def test_full_and_over_payment_settled() -> None:
-    assert classify_item(mk(), 1000, False, DUE) == ItemSituation(ItemState.SETTLED, 0)
-    assert classify_item(mk(), 1500, False, DUE) == ItemSituation(ItemState.SETTLED, 0)
+    assert classify_item(mk(), 1000, False, DUE) == ItemSituation(ItemState.SETTLED, 0, 0)
+    assert classify_item(mk(), 1500, False, DUE) == ItemSituation(ItemState.SETTLED, 0, 500)
+
+
+def test_excess_is_zero_when_not_overpaid() -> None:
+    assert classify_item(mk(), 400, True, DUE).excess_cents == 0
+    assert classify_item(mk(ItemStatus.CANCELLED), 2000, False, DUE).excess_cents == 0
 
 
 def test_cancelled() -> None:

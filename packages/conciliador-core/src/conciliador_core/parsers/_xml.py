@@ -6,18 +6,18 @@ from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import ParseError, fromstring
 
 from conciliador_core.errors import ParseError as CoreParseError
-from conciliador_core.parsers._limits import MAX_FILE_BYTES
+from conciliador_core.parsers._limits import MAX_XML_BYTES
 
 
 def safe_parse_xml(data: bytes) -> Element:
     """Interpreta ``data`` como XML recusando DTD, entidades e referências externas.
 
-    Levanta ``ParseError("too_large")`` acima de ``MAX_FILE_BYTES``,
+    Levanta ``ParseError("too_large")`` acima de ``MAX_XML_BYTES`` (2 MB),
     ``ParseError("xml_forbidden")`` para DTD/entidades e ``ParseError("invalid_format")``
     para qualquer outro XML malformado.
     """
-    if len(data) > MAX_FILE_BYTES:
-        raise CoreParseError("too_large", "Arquivo maior que o limite de 10 MB.")
+    if len(data) > MAX_XML_BYTES:
+        raise CoreParseError("too_large", "Arquivo XML maior que o limite de 2 MB.")
     try:
         return fromstring(data, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     except DefusedXmlException as exc:
