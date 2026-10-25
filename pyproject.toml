@@ -26,6 +26,10 @@ dev = [
     "bandit",
     "pip-audit",
     "types-defusedxml",
+    "fpdf2>=2.8,<3",
+    "gunicorn>=23,<24",
+    "psycopg[binary]>=3.2,<4",
+    "whitenoise>=6.7,<7",
 ]
 
 [tool.pytest.ini_options]

@@ -289,14 +289,18 @@ dev = [
     { name = "conciliador-core" },
     { name = "conciliador-synth" },
     { name = "django" },
+    { name = "fpdf2" },
+    { name = "gunicorn" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pip-audit" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pyotp" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-defusedxml" },
+    { name = "whitenoise" },
 ]
 
 [package.metadata]
@@ -307,14 +311,18 @@ dev = [
     { name = "conciliador-core", editable = "packages/conciliador-core" },
     { name = "conciliador-synth", editable = "tools/synthetic-data" },
     { name = "django", specifier = ">=5.1,<6.0" },
+    { name = "fpdf2", specifier = ">=2.8,<3" },
+    { name = "gunicorn", specifier = ">=23,<24" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pip-audit" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pyotp", specifier = ">=2.9,<3" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-defusedxml" },
+    { name = "whitenoise", specifier = ">=6.7,<7" },
 ]
 
 [[package]]
