@@ -50,7 +50,7 @@ def check_cnpj(cnpj: str) -> CnpjCheck:
         return CnpjCheck(
             s, True, None, None, "", "", "Erro ao consultar a Receita (tente de novo)."
         )
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         return CnpjCheck(
             s,
             True,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pyotp
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render, resolve_url
 from django.utils import timezone
@@ -108,7 +109,6 @@ def login_view(request: HttpRequest) -> HttpResponse:
                 request,
                 "accounts/login.html",
                 {"error": "E-mail ou senha incorretos.", "email": email},
-                status=401,
             )
         if user.mfa_secret:
             request.session["mfa_pending_user_id"] = user.pk
@@ -129,7 +129,7 @@ def mfa_verify(request: HttpRequest) -> HttpResponse:
             login(request, user)
             request.session.pop("mfa_pending_user_id", None)
             return _redirect(request, "fechamento", "atual")
-        return render(request, "accounts/mfa.html", {"error": "Código inválido."}, status=401)
+        return render(request, "accounts/mfa.html", {"error": "Código inválido."})
     return render(request, "accounts/mfa.html")
 
 
@@ -224,7 +224,19 @@ def empresa(request: HttpRequest) -> HttpResponse:
         company.cnpj_verified = check.found is True
         company.cnpj_verified_at = timezone.now() if check.found is True else None
         company.cnpj_status = check.situacao or ""
-        company.save()
+        try:
+            with transaction.atomic():
+                company.save()
+        except IntegrityError:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {
+                    "error": "Este CNPJ já está cadastrado em outra empresa.",
+                    "company": company,
+                },
+                status=400,
+            )
         if check.found is None:
             return render(
                 request,

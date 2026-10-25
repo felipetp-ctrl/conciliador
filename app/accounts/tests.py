@@ -61,6 +61,12 @@ class CnpjCheckTests(TestCase):
         self.assertTrue(check.valid_dv)
         self.assertIsNone(check.found)
 
+    @mock.patch("accounts.cnpj._fetch", side_effect=ValueError("json inválido"))
+    def test_invalid_response_does_not_block(self, _fetch):
+        check = check_cnpj(VALID)
+        self.assertTrue(check.valid_dv)
+        self.assertIsNone(check.found)
+
 
 class EmpresaViewTests(TestCase):
     def setUp(self):
@@ -106,6 +112,25 @@ class EmpresaViewTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.company.refresh_from_db()
         self.assertFalse(self.company.cnpj_verified)
+
+    @mock.patch(
+        "accounts.cnpj._fetch",
+        return_value=(
+            200,
+            {
+                "razao_social": "Empresa Teste Ltda",
+                "situacao_cadastral": 1,
+                "descricao_situacao_cadastral": "Ativa",
+            },
+        ),
+    )
+    def test_rejects_cnpj_from_another_company(self, _fetch):
+        _company(cnpj=VALID)
+        resp = self.client.post("/empresa/", {"name": "Nova", "cnpj": VALID})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("já está cadastrado", resp.content.decode())
+        self.company.refresh_from_db()
+        self.assertNotEqual(self.company.cnpj, VALID)
 
     def test_accountant_cannot_edit(self):
         c = Client()

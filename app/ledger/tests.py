@@ -810,7 +810,19 @@ class AccountsTests(TestCase):
         company = _company()
         user = _user(company)
         resp = self.client.post("/entrar/", {"email": user.email, "password": "errada"})
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "E-mail ou senha incorretos.")
+
+    def test_login_with_htmx_uses_hx_redirect(self):
+        company = _company()
+        user = _user(company)
+        resp = self.client.post(
+            "/entrar/",
+            {"email": user.email, "password": "senha-forte-123"},
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["HX-Redirect"], "/fechamento/atual/")
 
     def test_login_with_mfa_requires_code(self):
         import pyotp
@@ -826,7 +838,8 @@ class AccountsTests(TestCase):
         self.assertIn("/entrar/mfa/", resp["Location"])
 
         wrong = self.client.post("/entrar/mfa/", {"code": "000000"})
-        self.assertEqual(wrong.status_code, 401)
+        self.assertEqual(wrong.status_code, 200)
+        self.assertContains(wrong, "Código inválido.")
 
         right = self.client.post("/entrar/mfa/", {"code": pyotp.TOTP(secret).now()})
         self.assertEqual(right.status_code, 302)
