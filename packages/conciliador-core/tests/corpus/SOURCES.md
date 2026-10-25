@@ -35,3 +35,29 @@ URL base: `https://raw.githubusercontent.com/jseutter/ofxparse/master/tests/fixt
   cobertos pelo gerador sintético `conciliador_synth.ofx.make_ofx`.
 - Fixtures do `ofxparse` descartadas por não serem extratos bancários (investimento): `fidelity*.ofx`,
   `investment_*.ofx`, `td_ameritrade.ofx`, `tiaacref.ofx`, `vanguard*.ofx`.
+
+# Corpus fiscal (NF-e)
+
+Nenhum XML público de NF-e foi incluído em `fiscal/`: os exemplos encontrados ou não têm licença
+livre clara (amostras do Portal da NF-e) ou contêm CNPJ, razão social e endereço reais de empresas.
+A cobertura vem do gerador sintético `conciliador_synth.fiscal` (`make_nfe`, `make_nfe_cancellation`).
+
+## Apenas referência (sem cópia)
+
+| Fonte | URL | Licença | Motivo |
+|---|---|---|---|
+| `procNFe.xml` do `nfelib` (akretion) | https://github.com/akretion/nfelib/blob/master/nfelib/nfe/samples/v4_0/procNFe.xml | MIT | Licença compatível, mas traz CNPJ e razão social reais de empresas; rejeitado |
+| Exemplos do `sped-nfe`, `sped-da`, `nfephp` | https://github.com/nfephp-org | LGPL/MIT (variável por repositório) | Fixtures com aparência de dados reais de empresas; não copiados |
+| Amostras do Portal da NF-e | https://www.nfe.fazenda.gov.br/portal/ | Sem licença explícita | Não redistribuível com segurança; não copiado |
+
+## XSD oficial (somente conferência manual, não versionado)
+
+Leiaute 4.00 da NF-e (Portal da NF-e, "Esquemas XML"), consultado em 2026-10-24 por meio dos
+espelhos `akretion/nfelib` (`nfelib/nfe/schemas/v4_0/leiauteNFe_v4.00.xsd`, MIT) e
+`nfephp-org/sped-nfe` (`schemes/PL_009_V4/leiauteEvento_v1.00.xsd`). O portal oficial respondeu com
+redirecionamentos em loop a download automatizado (curl), então o XSD foi conferido pelo espelho.
+Caminhos confirmados: `infNFe/@Id` (`NFe` + 44 caracteres; padrão `[0-9]{6}[0-9A-Z]{12}[0-9]{26}`, ou
+seja, aceita CNPJ alfanumérico), `ide/nNF`, `ide/dhEmi`, `emit/CNPJ|CPF`, `dest/CNPJ|CPF|idEstrangeiro`,
+`total/ICMSTot/vNF`, `total/retTrib/{vRetPIS,vRetCOFINS,vRetCSLL,vIRRF,vRetPrev}`,
+`cobr/dup/{nDup,dVenc,vDup}`; evento: `procEventoNFe/evento/infEvento/{chNFe,tpEvento}` e
+`retEvento/infEvento/cStat`.
