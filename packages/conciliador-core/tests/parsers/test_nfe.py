@@ -127,6 +127,34 @@ def test_rejected_cancellation_ignored():
     assert parse_fiscal_xml(data, CO).cancelled_ids == ()
 
 
+def test_cancellation_request_without_ret_evento_ignored():
+    r = parse_fiscal_xml(make_nfe_cancellation(K, status=None), CO)
+    assert r.cancelled_ids == () and r.items == ()
+
+
+def test_cancellation_with_mismatched_ret_chave_ignored():
+    r = parse_fiscal_xml(make_nfe_cancellation(K, ret_chave="4" * 44), CO)
+    assert r.cancelled_ids == () and r.items == ()
+
+
+def test_cancellation_late_status_155_accepted():
+    assert parse_fiscal_xml(make_nfe_cancellation(K, status="155"), CO).cancelled_ids == (
+        f"nfe:{K}",
+    )
+
+
+def test_zero_net_yields_no_item():
+    r = parse_fiscal_xml(_nfe(total_cents=1000, withholdings={"vIRRF": 1000}), CO)
+    assert r.items == () and r.cancelled_ids == ()
+    assert parse_fiscal_xml(_nfe(total_cents=0), CO).items == ()
+
+
+def test_local_date_near_midnight_is_kept():
+    data = _nfe().replace(b"T10:00:00-03:00", b"T23:30:00-03:00")
+    (it,) = parse_fiscal_xml(data, CO).items
+    assert it.issued_on == date(2026, 10, 1) and it.due_on == date(2026, 10, 31)
+
+
 def test_bare_nfe_root_supported():
     data = _nfe().replace(b"<nfeProc", b"<x").replace(b"</nfeProc>", b"</x>")
     inner = data[data.index(b"<NFe>") : data.index(b"</NFe>") + 6]
@@ -198,9 +226,7 @@ def test_malformed_values_are_invalid_format(old, new):
 
 
 def test_non_positive_net_is_invalid_format():
-    data = _nfe(total_cents=1000, withholdings={"vIRRF": 1000})
-    assert _code(data) == "invalid_format"
-    assert _code(_nfe(total_cents=0)) == "invalid_format"
+    assert _code(_nfe(total_cents=1000, withholdings={"vIRRF": 1500})) == "invalid_format"
 
 
 def test_amount_with_three_decimals_not_misread():

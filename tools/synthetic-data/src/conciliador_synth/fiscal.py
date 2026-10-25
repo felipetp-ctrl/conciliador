@@ -63,16 +63,27 @@ def make_nfe(
     return xml.encode("utf-8")
 
 
-def make_nfe_cancellation(chave: str) -> bytes:
-    """``procEventoNFe`` de cancelamento (``tpEvento`` 110111) já homologado (``cStat`` 135)."""
+def make_nfe_cancellation(
+    chave: str, *, status: str | None = "135", ret_chave: str | None = None
+) -> bytes:
+    """``procEventoNFe`` de cancelamento (``tpEvento`` 110111).
+
+    Por padrão traz o ``retEvento`` homologado (``cStat`` 135). ``status=None`` omite o
+    ``retEvento`` (mero pedido); ``ret_chave`` altera a chave do ``retEvento``.
+    """
+    ret = ""
+    if status is not None:
+        ret = (
+            f'<retEvento versao="1.00"><infEvento><cStat>{escape(status)}</cStat>'
+            f"<chNFe>{ret_chave or chave}</chNFe><tpEvento>110111</tpEvento>"
+            "</infEvento></retEvento>"
+        )
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<procEventoNFe xmlns="{NFE_NS}" versao="1.00">'
         f'<evento versao="1.00"><infEvento Id="ID110111{chave}01">'
         f"<chNFe>{chave}</chNFe><tpEvento>110111</tpEvento><nSeqEvento>1</nSeqEvento>"
         '<detEvento versao="1.00"><descEvento>Cancelamento</descEvento></detEvento>'
-        "</infEvento></evento>"
-        f'<retEvento versao="1.00"><infEvento><cStat>135</cStat><chNFe>{chave}</chNFe>'
-        "<tpEvento>110111</tpEvento></infEvento></retEvento></procEventoNFe>"
+        f"</infEvento></evento>{ret}</procEventoNFe>"
     )
     return xml.encode("utf-8")

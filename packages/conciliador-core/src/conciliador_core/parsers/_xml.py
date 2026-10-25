@@ -6,7 +6,7 @@ from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import ParseError, fromstring
 
 from conciliador_core.errors import ParseError as CoreParseError
-from conciliador_core.parsers.ofx import MAX_FILE_BYTES
+from conciliador_core.parsers._limits import MAX_FILE_BYTES
 
 
 def safe_parse_xml(data: bytes) -> Element:

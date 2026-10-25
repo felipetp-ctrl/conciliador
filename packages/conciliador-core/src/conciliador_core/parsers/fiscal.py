@@ -166,6 +166,8 @@ def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[Expec
     dups = inf.findall(_q("cobr/dup"))
     if not dups:
         net = gross - sum(v for _, v in withholdings)
+        if net == 0:  # ex.: remessa de valor zero: nada a conciliar
+            return ()
         return (build("1", net, _add_days(issued, default_due_days)),)
 
     items: list[ExpectedItem] = []
@@ -188,8 +190,12 @@ def _parse_event(root: Element) -> tuple[str, ...]:
     if _text(info, "tpEvento") != _CANCEL_EVENT:
         return ()
     chave = _chave(_require(info, "chNFe"), "infEvento/chNFe")
-    status = _text(root, "retEvento/infEvento/cStat")
-    if status is not None and status not in _REGISTERED:
+    # Só o retorno homologado da SEFAZ cancela: um pedido de cancelamento sem retEvento não vale.
+    ret = root.find(_q("retEvento/infEvento"))
+    if ret is None or _text(ret, "cStat") not in _REGISTERED:
+        return ()
+    ret_chave = _text(ret, "chNFe")
+    if ret_chave is not None and ret_chave != chave:
         return ()
     return (f"nfe:{chave}",)
 

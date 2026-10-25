@@ -16,8 +16,7 @@ from conciliador_core.documents import find_documents
 from conciliador_core.errors import ParseError
 from conciliador_core.models import BankAccountRef, BankTransaction, Statement
 from conciliador_core.money import parse_ofx_amount
-
-MAX_FILE_BYTES = 10 * 1024 * 1024
+from conciliador_core.parsers._limits import MAX_FILE_BYTES
 
 # Sem aninhamento nem alternâncias sobrepostas: tempo linear na entrada.
 _TOKEN = re.compile(r"<(/?)([A-Za-z0-9.]+)>([^<]*)")
