@@ -10,4 +10,6 @@ __pycache__/
 # banco local de desenvolvimento (nunca versionar)
 db.sqlite3
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 app/staticfiles/

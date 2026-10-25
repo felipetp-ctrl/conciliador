@@ -607,6 +607,14 @@ class DeploySettingsTests(TestCase):
         with self.assertRaises(ValueError):
             project_settings._database_from_url("mysql://localhost/conciliador")
 
+    def test_sqlite_path_override(self):
+        import conciliador.settings as project_settings
+
+        with mock.patch.object(project_settings, "SQLITE_PATH", "/home/data/conciliador.sqlite3"):
+            self.assertEqual(str(project_settings._sqlite_name()), "/home/data/conciliador.sqlite3")
+        with mock.patch.object(project_settings, "SQLITE_PATH", ""):
+            self.assertTrue(str(project_settings._sqlite_name()).endswith("db.sqlite3"))
+
 
 class PeriodTests(TestCase):
     def test_period_opening_flows_into_balance(self):

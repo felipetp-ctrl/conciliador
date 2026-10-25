@@ -86,13 +86,24 @@ LOGIN_REDIRECT_URL = "fechamento"
 LOGOUT_REDIRECT_URL = "login"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+SQLITE_PATH = os.environ.get("SQLITE_PATH", "").strip()
+
+
+def _sqlite_name() -> Path:
+    """Arquivo do SQLite: ``/home/data/...`` no App Service, ``app/db.sqlite3`` local."""
+    return Path(SQLITE_PATH) if SQLITE_PATH else BASE_DIR / "db.sqlite3"
+
+
 DATABASES = {
     "default": (
         _database_from_url(DATABASE_URL)
         if DATABASE_URL
         else {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            # No piloto do App Service o arquivo fica em /home/data (persistente e
+            # fora do wwwroot, que é substituído a cada deploy).
+            "NAME": _sqlite_name(),
+            "OPTIONS": {"timeout": 20},
         }
     )
 }
@@ -121,7 +132,7 @@ ASGI_APPLICATION = "conciliador.asgi.application"
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", "").strip() or (BASE_DIR / "staticfiles"))
 
 if not DEBUG:
     STORAGES = {
