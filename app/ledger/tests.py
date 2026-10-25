@@ -615,6 +615,14 @@ class DeploySettingsTests(TestCase):
         with mock.patch.object(project_settings, "SQLITE_PATH", ""):
             self.assertTrue(str(project_settings._sqlite_name()).endswith("db.sqlite3"))
 
+    def test_upload_limits_are_configured(self):
+        from django.conf import settings
+
+        self.assertEqual(settings.MAX_UPLOAD_BYTES, 10 * 1024 * 1024)
+        self.assertEqual(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, settings.MAX_UPLOAD_BYTES)
+        self.assertEqual(settings.FILE_UPLOAD_MAX_MEMORY_SIZE, settings.MAX_UPLOAD_BYTES)
+        self.assertEqual(settings.DATA_UPLOAD_MAX_NUMBER_FILES, 20)
+
 
 class PeriodTests(TestCase):
     def test_period_opening_flows_into_balance(self):
@@ -795,6 +803,26 @@ class UploadTests(TestCase):
         self.assertIn("dropzone--error", resp.content.decode())
         self.assertEqual(models.ImportJob.objects.get().state, "error")
 
+    def test_upload_over_limit_is_rejected_before_parsing(self):
+        with mock.patch("ledger.views.MAX_FILE_BYTES", 10):
+            resp = self._upload("ofx", "grande.ofx", b"x" * 11)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("maior que o limite", resp.content.decode())
+        job = models.ImportJob.objects.get()
+        self.assertEqual(job.state, "error")
+        self.assertIn("maior que o limite", job.error)
+        self.assertEqual(models.BankTransaction.objects.count(), 0)
+
+    def test_xml_upload_over_limit_is_rejected_before_parsing(self):
+        with mock.patch("ledger.views.MAX_XML_BYTES", 10):
+            resp = self._upload("nfe", "grande.xml", b"<nfe>" + b"x" * 11)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("maior que o limite", resp.content.decode())
+        self.assertEqual(models.ImportJob.objects.get().state, "error")
+        self.assertEqual(models.ExpectedItem.objects.count(), 0)
+
     def test_contador_cannot_upload(self):
         from django.test import Client
 
@@ -891,6 +919,150 @@ class AccountsTests(TestCase):
         html = ca.get("/fechamento/atual/").content.decode()
         self.assertIn("PIX DA EMPRESA A", html)
         self.assertNotIn("PIX DA EMPRESA B", html)
+
+
+class CompanyIsolationTests(TestCase):
+    """Um dono nunca lê, altera ou apaga dados de outra empresa por ID cruzado."""
+
+    def setUp(self):
+        from django.test import Client
+
+        self.a = _company("Empresa A")
+        self.acc_a = _account(self.a)
+        self.tx_a = _tx(
+            self.acc_a,
+            190000,
+            "PIX REC 45723174000110 ALFA",
+            date(2026, 10, 21),
+            documents=["45723174000110"],
+            key="k-a",
+        )
+        self.item_a = _item(
+            self.a, 190000, date(2026, 10, 20), counterpart_doc="45723174000110", number="nº A"
+        )
+
+        self.b = _company("Empresa B")
+        self.acc_b = _account(self.b)
+        self.tx_b = _tx(self.acc_b, 99999, "PIX DA EMPRESA B", date(2026, 10, 21), key="k-b")
+        self.item_b = _item(self.b, 99999, date(2026, 10, 21), number="nº B")
+
+        self.client_a = Client()
+        _login(self.client_a, self.a)
+
+    def test_confirm_rejects_document_from_another_company(self):
+        # duas notas da empresa A com o mesmo CNPJ e valor → sugestão ambígua, em que o
+        # formulário escolhe o documento (doc_id) e o servidor precisa validar a empresa.
+        _item(
+            self.a,
+            190000,
+            date(2026, 10, 20),
+            counterpart_doc="45723174000110",
+            number="nº A2",
+        )
+        ctx = services.reconcile(self.a)
+        sug = next(i for i in ctx["items"] if i["status"] == "a_confirmar" and i.get("candidates"))
+        self.assertTrue(sug["candidates"])
+
+        resp = self.client_a.post(f"/item/{sug['id']}/confirmar/", {"doc_id": self.item_b.pk})
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(models.Link.objects.exists())
+
+    def test_confirm_accepts_own_document(self):
+        ctx = services.reconcile(self.a)
+        sug = next(i for i in ctx["items"] if i["status"] == "a_confirmar")
+
+        resp = self.client_a.post(f"/item/{sug['id']}/confirmar/", {"doc_id": self.item_a.pk})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            models.Link.objects.filter(
+                company=self.a, transaction=self.tx_a, item=self.item_a
+            ).exists()
+        )
+
+    def test_manual_link_rejects_item_from_another_company(self):
+        resp = self.client_a.post(
+            "/vinculo-manual/",
+            {"doc_id": self.item_b.pk, "bank_id": self.tx_a.pk, "mode": "parcial"},
+        )
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(models.Link.objects.exists())
+
+    def test_manual_link_rejects_transaction_from_another_company(self):
+        resp = self.client_a.post(
+            "/vinculo-manual/",
+            {"doc_id": self.item_a.pk, "bank_id": self.tx_b.pk, "mode": "parcial"},
+        )
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(models.Link.objects.exists())
+
+    def test_manual_link_accepts_own_pair(self):
+        resp = self.client_a.post(
+            "/vinculo-manual/",
+            {"doc_id": self.item_a.pk, "bank_id": self.tx_a.pk, "mode": "quitar"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            models.Link.objects.filter(
+                company=self.a, transaction=self.tx_a, item=self.item_a
+            ).exists()
+        )
+
+    def test_undo_rejects_link_from_another_company(self):
+        link_b = models.Link.objects.create(
+            company=self.b, transaction=self.tx_b, item=self.item_b, rule="document"
+        )
+
+        resp = self.client_a.post(f"/item/lk:{link_b.pk}/desfazer/")
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertTrue(models.Link.objects.filter(pk=link_b.pk).exists())
+
+    def test_classify_rejects_counterpart_from_another_company(self):
+        tx = _tx(self.acc_a, -1000, "TARIFA PACOTE", date(2026, 10, 22), key="k-tarifa")
+
+        resp = self.client_a.post(
+            f"/item/tx:{tx.pk}/classificar/",
+            {"kind": "transferencia", "counterpart": self.tx_b.pk},
+        )
+
+        self.assertEqual(resp.status_code, 404)
+        tx.refresh_from_db()
+        self.assertEqual(tx.classification, "")
+        self.assertIsNone(tx.transfer_counterpart_id)
+
+    def test_classify_accepts_own_counterpart(self):
+        tx = _tx(self.acc_a, -1000, "TRANSFERENCIA", date(2026, 10, 22), key="k-transf")
+
+        resp = self.client_a.post(
+            f"/item/tx:{tx.pk}/classificar/",
+            {"kind": "transferencia", "counterpart": self.tx_a.pk},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        tx.refresh_from_db()
+        self.assertEqual(tx.classification, "transferencia")
+        self.assertEqual(tx.transfer_counterpart_id, self.tx_a.pk)
+
+    def test_external_id_can_repeat_in_different_companies(self):
+        self.assertEqual(
+            models.ExpectedItem.objects.filter(external_id=self.item_b.external_id).count(), 1
+        )
+        other = models.ExpectedItem.objects.create(
+            company=self.a,
+            external_id=self.item_b.external_id,
+            source="nfe",
+            direction="inflow",
+            amount_cents=1000,
+            due_on=date(2026, 10, 21),
+        )
+        self.assertEqual(
+            models.ExpectedItem.objects.filter(external_id=other.external_id).count(), 2
+        )
 
 
 class AuthDesignTests(TestCase):

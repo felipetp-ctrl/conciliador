@@ -13,6 +13,7 @@ from accounts.models import Role
 from accounts.views import resolve_company
 from conciliador_core import ParseError
 from conciliador_core.money import parse_brl_amount
+from conciliador_core.parsers._limits import MAX_FILE_BYTES, MAX_XML_BYTES
 from conciliador_ui.landing_context import landing_context
 from django.contrib.auth.decorators import login_required
 from django.db import connection
@@ -325,8 +326,20 @@ def _conta_by_id(company: models.Company, conta_id: int | None) -> models.BankAc
     return models.BankAccount.objects.filter(company=company, pk=conta_id).first()
 
 
+def _item_of(company: models.Company, pk: int) -> models.ExpectedItem | None:
+    """Item da empresa; nunca busca por PK global (isolamento entre empresas)."""
+    return models.ExpectedItem.objects.filter(company=company, pk=pk).first()
+
+
+def _tx_of(company: models.Company, pk: int) -> models.BankTransaction | None:
+    """Lançamento de uma conta da empresa; nunca busca por PK global."""
+    return models.BankTransaction.objects.filter(account__company=company, pk=pk).first()
+
+
 def _create_links(company: models.Company, pairs: list[tuple], rule: str, who: str = "") -> None:
     for tx, it in pairs:
+        if tx.account.company_id != company.pk or it.company_id != company.pk:
+            raise ValueError("vínculo entre empresas diferentes")
         models.Link.objects.update_or_create(
             company=company,
             transaction=tx,
@@ -342,21 +355,35 @@ def _confirm(
     if item["id"].startswith("grp:"):
         _, kind, anchor, *rest = item["id"].split(":")
         if kind == "p":
-            it = models.ExpectedItem.objects.get(pk=int(anchor))
-            txns = list(models.BankTransaction.objects.filter(pk__in=[int(x) for x in rest]))
+            it = _item_of(company, int(anchor))
+            txns = list(
+                models.BankTransaction.objects.filter(
+                    account__company=company, pk__in=[int(x) for x in rest]
+                )
+            )
+            if it is None or len(txns) != len(rest):
+                return None
             _create_links(company, [(t, it) for t in txns], "partial", who)
             return txns[0].account_id
-        tx = models.BankTransaction.objects.get(pk=int(anchor))
-        its = list(models.ExpectedItem.objects.filter(pk__in=[int(x) for x in rest]))
+        tx = _tx_of(company, int(anchor))
+        its = list(
+            models.ExpectedItem.objects.filter(company=company, pk__in=[int(x) for x in rest])
+        )
+        if tx is None or len(its) != len(rest):
+            return None
         _create_links(company, [(tx, i) for i in its], "batch", who)
         return tx.account_id
 
-    tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
+    tx = _tx_of(company, int(item["bank"]["id"]))
+    if tx is None:
+        return None
     if item.get("candidates"):
         doc_id = doc_id or item["candidates"][0]["id"]
     else:
         doc_id = item["doc"]["id"]
-    it = models.ExpectedItem.objects.get(pk=doc_id)
+    it = _item_of(company, int(doc_id))
+    if it is None:
+        return None
     _create_links(company, [(tx, it)], _RULE_KEY.get(item.get("rule"), "unique"), who)
     return tx.account_id
 
@@ -369,6 +396,8 @@ def item_confirmar(request: HttpRequest, item_id: str):
     if not item:
         return HttpResponse(status=404)
     conta_id = _confirm(company, item, request.POST.get("doc_id"), _who(request))
+    if conta_id is None:
+        return HttpResponse(status=404)
     return HttpResponse(headers={"HX-Redirect": _back(conta_id)})
 
 
@@ -377,11 +406,13 @@ def item_confirmar(request: HttpRequest, item_id: str):
 def item_recusar(request: HttpRequest, item_id: str):
     company = _company_of(request)
     item = _find_item(company, item_id)
-    if not item or item.get("kind"):
+    if not item or item.get("kind") or not item.get("bank"):
         return HttpResponse(status=404)
-    tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
+    tx = _tx_of(company, int(item["bank"]["id"]))
     doc_id = item["doc"]["id"] if item.get("doc") else item["candidates"][0]["id"]
-    it = models.ExpectedItem.objects.get(pk=doc_id)
+    it = _item_of(company, int(doc_id))
+    if tx is None or it is None:
+        return HttpResponse(status=404)
     models.RejectedLink.objects.get_or_create(company=company, transaction=tx, item=it)
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
@@ -392,7 +423,9 @@ def item_desfazer(request: HttpRequest, item_id: str):
     if not item_id.startswith("lk:"):
         return HttpResponse(status=404)
     try:
-        link = models.Link.objects.select_related("transaction").get(pk=int(item_id[3:]))
+        link = models.Link.objects.select_related("transaction").get(
+            company=_company_of(request), pk=int(item_id[3:])
+        )
     except (ValueError, models.Link.DoesNotExist):
         return HttpResponse(status=404)
     conta_id = services.unlink_group(link)
@@ -406,14 +439,19 @@ def item_classificar(request: HttpRequest, item_id: str):
     item = _find_item(company, item_id)
     if not item or not item.get("bank"):
         return HttpResponse(status=404)
-    tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
+    tx = _tx_of(company, int(item["bank"]["id"]))
+    if tx is None:
+        return HttpResponse(status=404)
     kind = request.POST.get("kind", "outro")
     meta = services.CLASSIFICATIONS.get(kind, services.CLASSIFICATIONS["outro"])
     if kind == "transferencia":
         tx.classification = "transferencia"
         tx.classification_direction = ""
         counter = request.POST.get("counterpart") or ""
-        tx.transfer_counterpart_id = int(counter) if counter else None
+        counterpart = _tx_of(company, int(counter)) if counter.isdigit() else None
+        if counter and counterpart is None:
+            return HttpResponse(status=404)
+        tx.transfer_counterpart = counterpart
     else:
         direction = meta["direction"] or request.POST.get("direction", "out")
         tx.classification = kind
@@ -431,10 +469,13 @@ def item_classificar(request: HttpRequest, item_id: str):
 @login_required
 @_dono_required
 def item_desclassificar(request: HttpRequest, item_id: str):
-    item = _find_item(_company_of(request), item_id)
+    company = _company_of(request)
+    item = _find_item(company, item_id)
     if not item or not item.get("bank"):
         return HttpResponse(status=404)
-    tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
+    tx = _tx_of(company, int(item["bank"]["id"]))
+    if tx is None:
+        return HttpResponse(status=404)
     tx.classification = ""
     tx.classification_direction = ""
     tx.classified_note = ""
@@ -568,7 +609,31 @@ def importacao_enviar(request: HttpRequest, kind: str):
 
 
 def _process_upload(company: models.Company, kind: str, f, request: HttpRequest) -> dict:
-    data = f.read()
+    # O parser também recusa arquivos grandes, mas só depois de ler tudo para a memória.
+    # Checar o tamanho antes evita que um upload enorme derrube o processo.
+    limit = MAX_XML_BYTES if kind in ("nfe", "nfse") else MAX_FILE_BYTES
+    too_large = "Arquivo maior que o limite (10 MB; XML 2 MB)."
+    if f.size is not None and f.size > limit:
+        models.ImportJob.objects.create(
+            company=company,
+            source=kind,
+            file_name=f.name,
+            state="error",
+            error=too_large,
+            created_by=_who(request),
+        )
+        return {"state": "error", "error": too_large}
+    data = f.read(limit + 1)
+    if len(data) > limit:
+        models.ImportJob.objects.create(
+            company=company,
+            source=kind,
+            file_name=f.name,
+            state="error",
+            error=too_large,
+            created_by=_who(request),
+        )
+        return {"state": "error", "error": too_large}
     cnpj = company.cnpj if kind in ("nfe", "nfse") else None
     if kind == "ofx":
         report = ingest.ingest_ofx(data, f.name, company)
@@ -676,8 +741,14 @@ def demonstrativo_pdf(request: HttpRequest, periodo_slug: str):
 def vinculo_manual(request: HttpRequest):
     """Vincula manualmente um documento a um lançamento (parcial ou quitado com diferença)."""
     company = _company_of(request)
-    it = models.ExpectedItem.objects.get(pk=request.POST["doc_id"])
-    tx = models.BankTransaction.objects.get(pk=request.POST["bank_id"])
+    doc_id = request.POST.get("doc_id", "")
+    bank_id = request.POST.get("bank_id", "")
+    if not doc_id.isdigit() or not bank_id.isdigit():
+        return HttpResponse(status=404)
+    it = _item_of(company, int(doc_id))
+    tx = _tx_of(company, int(bank_id))
+    if it is None or tx is None:
+        return HttpResponse(status=404)
     mode = request.POST.get("mode", "parcial")
     reason = request.POST.get("reason", "")
     with_difference = mode == "quitar" and abs(tx.amount_cents) != it.amount_cents

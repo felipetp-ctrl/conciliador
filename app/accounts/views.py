@@ -159,7 +159,8 @@ def mfa_setup(request: HttpRequest) -> HttpResponse:
             status=400,
         )
     if request.method == "POST" and request.POST.get("action") == "disable":
-        user.mfa_secret = ""
+        # limpa o segredo; não é uma senha
+        user.mfa_secret = ""  # nosec B105
         user.save(update_fields=["mfa_secret"])
         request.session.pop("mfa_pending_secret", None)
         return redirect("mfa_setup")

@@ -100,7 +100,8 @@ class Invite(models.Model):
 def seed_demo_user(
     company: Company,
     email: str = "demo@conciliador.local",
-    password: str = "demo12345",  # noqa: S107
+    # senha de demonstração local; nunca é usada em produção
+    password: str = "demo12345",  # noqa: S107  # nosec B107
 ) -> User:
     """Usuário dono de demonstração (só para desenvolvimento local)."""
     user, created = User.objects.get_or_create(email=email, defaults={"name": "Demonstração"})

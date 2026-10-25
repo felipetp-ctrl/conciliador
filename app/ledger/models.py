@@ -95,9 +95,9 @@ class ExpectedItem(models.Model):
     STATUS_CHOICES = [("open", "aberto"), ("cancelled", "cancelado")]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="items")
-    external_id = models.CharField(
-        max_length=120, unique=True
-    )  # id do núcleo (ex.: "nfe:<chave>:1")
+    # id do núcleo (ex.: "nfe:<chave>:1"); único dentro da empresa, não globalmente:
+    # a mesma nota pode ser emitida para duas empresas.
+    external_id = models.CharField(max_length=120)
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES)
     direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     amount_cents = models.PositiveIntegerField()  # líquido, sempre positivo
@@ -113,6 +113,11 @@ class ExpectedItem(models.Model):
 
     class Meta:
         ordering = ["due_on", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "external_id"], name="uniq_item_company_external"
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.external_id} {self.amount_cents}"

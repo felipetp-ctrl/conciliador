@@ -38,6 +38,8 @@ jobs:
           enable-cache: false
       - run: uv sync --locked
       - run: uv run pytest --cov=conciliador_core --cov-fail-under=90
+      - run: uv run coverage run app/manage.py test ledger accounts
+      - run: uv run coverage report --include='app/accounts/*,app/ledger/*' --omit='*/tests.py,*/migrations/*,*/management/*' --fail-under=80
 
   bandit:
     name: Bandit
@@ -51,7 +53,7 @@ jobs:
           version: "0.12.13"
           enable-cache: false
       - run: uv sync --locked
-      - run: uv run bandit -c pyproject.toml -r packages tools -q
+      - run: uv run bandit -c pyproject.toml -r packages tools app -q
 
   pip-audit:
     name: pip-audit
@@ -91,4 +93,4 @@ jobs:
         with:
           version: "0.12.13"
           enable-cache: false
-      - run: uvx --from semgrep==1.182.1 semgrep scan --config p/python --config p/secrets --error --metrics=off packages tools
+      - run: uvx --from semgrep==1.182.1 semgrep scan --config p/python --config p/secrets --error --metrics=off packages tools app

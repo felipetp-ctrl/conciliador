@@ -49,7 +49,8 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
 DEBUG = _env_bool("DEBUG", True)
 if not SECRET_KEY:
     if DEBUG:
-        SECRET_KEY = "dev-only-insecure-key"
+        # chave insegura só para desenvolvimento; produção exige SECRET_KEY no ambiente
+        SECRET_KEY = "dev-only-insecure-key"  # nosec B105
     else:
         raise RuntimeError("Defina SECRET_KEY no ambiente quando DEBUG=0.")
 
@@ -133,6 +134,13 @@ ASGI_APPLICATION = "conciliador.asgi.application"
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", "").strip() or (BASE_DIR / "staticfiles"))
+
+# Uploads: o arquivo é gravado em disco acima deste tamanho e o app recusa antes de ler
+# (o limite fino por formato fica em ``conciliador_core.parsers._limits``).
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+DATA_UPLOAD_MAX_NUMBER_FILES = 20
 
 if not DEBUG:
     STORAGES = {

@@ -77,9 +77,9 @@ def ingest_ofx(data: bytes, file_name: str, company: models.Company) -> dict:
 def _save_item(item, company: models.Company, status: str) -> bool:
     """Grava (ou atualiza) um item esperado do núcleo. Devolve True se criou."""
     _, created = models.ExpectedItem.objects.update_or_create(
+        company=company,
         external_id=item.id,
         defaults={
-            "company": company,
             "source": item.source.value,
             "direction": item.direction.value,
             "amount_cents": item.amount_cents,
