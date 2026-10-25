@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "conciliador-core"
 version = "0.1.0"
-description = "Conciliação financeira brasileira (NF-e, OFX, CNAB) como biblioteca de código aberto"
+description = "Conciliação financeira brasileira (OFX, NF-e, NFS-e nacional e CSV) como biblioteca de código aberto"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

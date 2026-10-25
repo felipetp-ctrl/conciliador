@@ -13,8 +13,8 @@ Respondemos em até **5 dias úteis** com a confirmação do recebimento e os pr
 
 ## Escopo
 
-Dentro do escopo: o código de `packages/conciliador-core` e `tools/` (leitura de XML/OFX/CNAB,
-validação de CNPJ, limites de tamanho, dependências e CI).
+Dentro do escopo: o código de `packages/conciliador-core` e `tools/` (leitura de OFX, NF-e,
+NFS-e nacional e CSV, validação de CPF/CNPJ, limites de tamanho, dependências e CI).
 
 Fora do escopo: dados ou arquivos reais de clientes (não devem existir no repositório; se
 encontrar algum, reporte pelo mesmo canal) e vulnerabilidades em dependências já corrigidas

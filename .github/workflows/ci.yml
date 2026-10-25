@@ -17,6 +17,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
       - run: uv sync --locked
       - run: uv run ruff check
       - run: uv run ruff format --check
@@ -30,6 +33,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
       - run: uv sync --locked
       - run: uv run pytest --cov=conciliador_core --cov-fail-under=90
 
@@ -41,8 +47,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
       - run: uv sync --locked
-      - run: uv run bandit -r packages/conciliador-core/src -q
+      - run: uv run bandit -c pyproject.toml -r packages tools -q
 
   pip-audit:
     name: pip-audit
@@ -52,9 +61,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
       - run: uv sync --locked
-      - run: uv export --format requirements-txt --no-hashes --no-emit-workspace > requirements-audit.txt
-      - run: uv run pip-audit -r requirements-audit.txt --no-deps --disable-pip
+      - run: uv export --format requirements-txt --no-hashes --no-emit-workspace > "$RUNNER_TEMP/requirements-audit.txt"
+      - run: uv run pip-audit -r "$RUNNER_TEMP/requirements-audit.txt" --no-deps --disable-pip
 
   gitleaks:
     name: gitleaks
@@ -76,4 +88,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
       - run: uvx --from semgrep==1.182.1 semgrep scan --config p/python --config p/secrets --error --metrics=off packages tools
