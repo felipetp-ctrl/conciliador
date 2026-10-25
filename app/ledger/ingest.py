@@ -1,10 +1,8 @@
-"""Ingestão de arquivos reais (corpus) para o banco, via ``conciliador_core``.
+"""Ingestão de arquivos para o banco, via ``conciliador_core``.
 
-Para a demonstração local, cada arquivo é parseado com os leitores do núcleo e
-gravado sob a empresa de demonstração. OFX vira conta + lançamentos; cada XML
-fiscal é parseado do ponto de vista do seu emitente (direção "a receber") e os
-itens ficam sob a empresa de demonstração — a segmentação por empresa real entra
-junto com autenticação/RLS.
+Cada leitor recebe ``bytes`` (de um upload ou do corpus) e grava sob a empresa do
+usuário. OFX vira conta + lançamentos; NF-e/NFS-e viram itens esperados (a direção
+é decidida pelo CNPJ da empresa); CSV vira contas a pagar/receber.
 """
 
 from __future__ import annotations
@@ -19,13 +17,30 @@ from . import models
 _EMIT = re.compile(rb"<emit>.*?<CNPJ>([0-9A-Za-z]{14})</CNPJ>", re.S)
 _PREST = re.compile(rb"<prest(?:ador)?>.*?<CNPJ>([0-9A-Za-z]{14})</CNPJ>", re.S)
 
+# Mensagens amigáveis para os códigos de ParseError (os específicos vêm do próprio erro).
+_MSG = {
+    "too_large": "Arquivo maior que o limite (10 MB; XML 2 MB).",
+    "xml_forbidden": "XML com conteúdo proibido (DTD ou entidades externas).",
+    "no_emitente": "Não encontramos o emitente/prestador neste XML.",
+    "invalid_cnpj": "O CNPJ da empresa é inválido. Informe um CNPJ válido em Empresa.",
+}
 
-def ingest_ofx(path: Path, company: models.Company) -> dict:
+
+def _err(file_name: str, code: str, message: str = "") -> dict:
+    return {
+        "file": file_name,
+        "ok": False,
+        "error": code,
+        "message": message or _MSG.get(code, code),
+    }
+
+
+def ingest_ofx(data: bytes, file_name: str, company: models.Company) -> dict:
     """Parseia um OFX e grava a conta e os lançamentos. Devolve um resumo."""
     try:
-        stmt = parse_ofx(path.read_bytes())
+        stmt = parse_ofx(data)
     except ParseError as e:
-        return {"file": path.name, "ok": False, "error": e.code}
+        return _err(file_name, e.code, e.message)
     account, _ = models.BankAccount.objects.get_or_create(
         company=company,
         bank_id=stmt.account.bank_id,
@@ -51,7 +66,7 @@ def ingest_ofx(path: Path, company: models.Company) -> dict:
         )
         created += int(was_created)
     return {
-        "file": path.name,
+        "file": file_name,
         "ok": True,
         "txns": len(stmt.transactions),
         "created": created,
@@ -81,42 +96,50 @@ def _save_item(item, company: models.Company, status: str) -> bool:
     return created
 
 
-def ingest_fiscal(path: Path, company: models.Company) -> dict:
-    """Parseia um XML fiscal do ponto de vista do emitente e grava os itens."""
-    data = path.read_bytes()
-    m = _EMIT.search(data) or _PREST.search(data)
-    if not m:
-        return {"file": path.name, "ok": False, "error": "no_emitente"}
-    company_cnpj = m.group(1).decode()
+def ingest_fiscal(
+    data: bytes, file_name: str, company: models.Company, company_cnpj: str | None = None
+) -> dict:
+    """Parseia um XML fiscal e grava os itens (direção pelo CNPJ da empresa).
+
+    ``company_cnpj`` é o CNPJ real da empresa para decidir a direção (a receber/a pagar).
+    Se ``None`` (modo corpus/demo), usa o emitente do próprio XML.
+    """
+    if company_cnpj:
+        cnpj = company_cnpj
+    else:
+        m = _EMIT.search(data) or _PREST.search(data)
+        if not m:
+            return _err(file_name, "no_emitente")
+        cnpj = m.group(1).decode()
     try:
-        result = parse_fiscal_xml(data, company_cnpj)
+        result = parse_fiscal_xml(data, cnpj)
     except ParseError as e:
-        return {"file": path.name, "ok": False, "error": e.code}
+        return _err(file_name, e.code, e.message)
     except ValueError:
-        return {"file": path.name, "ok": False, "error": "invalid_cnpj"}
+        return _err(file_name, "invalid_cnpj")
     created = 0
     cancelled = set(result.cancelled_ids)
     for item in result.items:
         status = "cancelled" if any(item.id.startswith(c + ":") for c in cancelled) else "open"
         created += int(_save_item(item, company, status))
     return {
-        "file": path.name,
+        "file": file_name,
         "ok": True,
         "items": len(result.items),
         "created": created,
-        "emitente": company_cnpj,
+        "emitente": cnpj,
     }
 
 
-def ingest_csv(path: Path, company: models.Company) -> dict:
+def ingest_csv(data: bytes, file_name: str, company: models.Company) -> dict:
     """Parseia um CSV de contas a pagar/receber e grava os itens válidos."""
     try:
-        result = parse_items_csv(path.read_bytes())
+        result = parse_items_csv(data)
     except ParseError as e:
-        return {"file": path.name, "ok": False, "error": e.code}
+        return _err(file_name, e.code, e.message)
     created = sum(int(_save_item(item, company, "open")) for item in result.items)
     return {
-        "file": path.name,
+        "file": file_name,
         "ok": True,
         "items": len(result.items),
         "created": created,
@@ -129,10 +152,10 @@ def ingest_corpus(corpus_dir: str, company: models.Company) -> list[dict]:
     root = Path(corpus_dir)
     report: list[dict] = []
     for path in sorted((root / "ofx").glob("*.ofx")):
-        report.append(ingest_ofx(path, company))
+        report.append(ingest_ofx(path.read_bytes(), path.name, company))
     for sub in ("nfe", "nfse-nacional"):
         folder = root / sub
         if folder.exists():
             for path in sorted(folder.glob("*.xml")):
-                report.append(ingest_fiscal(path, company))
+                report.append(ingest_fiscal(path.read_bytes(), path.name, company))
     return report

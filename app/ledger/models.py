@@ -130,6 +130,28 @@ class RejectedLink(models.Model):
         ]
 
 
+class ImportJob(models.Model):
+    """Um arquivo enviado pelo dono, com o resultado do processamento."""
+
+    SOURCE_CHOICES = [("ofx", "OFX"), ("nfe", "NF-e"), ("nfse", "NFS-e"), ("csv", "CSV")]
+    STATE_CHOICES = [("processing", "processando"), ("done", "concluído"), ("error", "erro")]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="imports")
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES)
+    file_name = models.CharField(max_length=255)
+    state = models.CharField(max_length=10, choices=STATE_CHOICES, default="processing")
+    result = models.CharField(max_length=255, blank=True, default="")
+    error = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.source} {self.file_name} ({self.state})"
+
+
 class Link(models.Model):
     """Vínculo confirmado por uma pessoa entre um lançamento e um item."""
 

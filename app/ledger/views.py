@@ -13,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
-from . import models, services
+from . import ingest, models, services
 
 _RULE_KEY = {
     "Regra 1": "document",
@@ -412,16 +412,119 @@ def aprovar_lote(request: HttpRequest):
 
 @login_required
 def importacao(request: HttpRequest):
-    base, _ = _base(request, "importacao")
+    base, company = _base(request, "importacao")
     base.update(
         {
             "fontes": _fontes(),
             "jobs": {k: {"state": "idle"} for k in ("ofx", "nfe", "nfse", "csv")},
-            "importacoes": [],
+            "importacoes": _importacoes_recentes(company),
             "duplicatas": [],
         }
     )
     return render(request, "app/importacao.html", base)
+
+
+def _importacoes_recentes(company: models.Company, limit: int = 20) -> list[dict]:
+    out = []
+    for job in models.ImportJob.objects.filter(company=company)[:limit]:
+        out.append(
+            {
+                "at": job.created_at,
+                "kind": dict(models.ImportJob.SOURCE_CHOICES).get(job.source, job.source),
+                "file_label": job.file_name,
+                "result": job.result if job.state == "done" else job.error,
+                "who": job.created_by,
+            }
+        )
+    return out
+
+
+@login_required
+@_dono_required
+def importacao_enviar(request: HttpRequest, kind: str):
+    """Recebe um arquivo (OFX/NF-e/NFS-e/CSV), lê e grava; devolve o dropzone atualizado."""
+    company = _company_of(request)
+    source = _fontes().get(kind)
+    if source is None:
+        return HttpResponse(status=404)
+    files = request.FILES.getlist("files")
+    if not files:
+        return render(
+            request,
+            "ds/dropzone.html",
+            {
+                "source": source,
+                "job": {"state": "error", "file_name": "", "error": "Nenhum arquivo."},
+            },
+        )
+    jobs = [_process_upload(company, kind, f, request) for f in files]
+    if all(j["state"] == "error" for j in jobs):
+        job = {"state": "error", "file_name": files[0].name, "error": jobs[0]["error"]}
+    elif len(jobs) == 1:
+        job = {"state": "done", "file_name": files[0].name, "result": jobs[0]["result"]}
+    else:
+        job = {"state": "done", "file_name": files[0].name, "result": _upload_summary(jobs)}
+    return render(request, "ds/dropzone.html", {"source": source, "job": job})
+
+
+def _process_upload(company: models.Company, kind: str, f, request: HttpRequest) -> dict:
+    data = f.read()
+    cnpj = company.cnpj if kind in ("nfe", "nfse") else None
+    if kind == "ofx":
+        report = ingest.ingest_ofx(data, f.name, company)
+    elif kind in ("nfe", "nfse"):
+        report = ingest.ingest_fiscal(data, f.name, company, company_cnpj=cnpj)
+    else:
+        report = ingest.ingest_csv(data, f.name, company)
+    if report["ok"]:
+        if kind == "ofx":
+            n = report["txns"]
+            result = (
+                f"{n} lançamento{'s' if n != 1 else ''} "
+                f"({report['created']} novo{'s' if report['created'] != 1 else ''})"
+                f" · {report['account']}"
+            )
+        elif kind in ("nfe", "nfse"):
+            n = report["items"]
+            result = (
+                f"{n} nota{'s' if n != 1 else ''} "
+                f"({report['created']} nova{'s' if report['created'] != 1 else ''})"
+            )
+        else:
+            n = report["items"]
+            result = (
+                f"{n} conta{'s' if n != 1 else ''} "
+                f"({report['created']} nova{'s' if report['created'] != 1 else ''})"
+            )
+        models.ImportJob.objects.create(
+            company=company,
+            source=kind,
+            file_name=f.name,
+            state="done",
+            result=result,
+            created_by=_who(request),
+        )
+        return {"state": "done", "result": result}
+    models.ImportJob.objects.create(
+        company=company,
+        source=kind,
+        file_name=f.name,
+        state="error",
+        error=report["message"],
+        created_by=_who(request),
+    )
+    return {"state": "error", "error": report["message"]}
+
+
+def _upload_summary(jobs: list[dict]) -> str:
+    done = [j for j in jobs if j["state"] == "done"]
+    failed = [j for j in jobs if j["state"] == "error"]
+    parts = []
+    if done:
+        parts.append(f"{len(done)} arquivo(s) importado(s)")
+    if failed:
+        parts.append(f"{len(failed)} recusado(s)")
+    return " · ".join(parts) or "Importado"
 
 
 def landing(request: HttpRequest):
@@ -477,18 +580,6 @@ def vinculo_manual(request: HttpRequest):
         },
     )
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
-
-
-@login_required
-def importacao_enviar(request: HttpRequest, kind: str):
-    return render(
-        request,
-        "ds/dropzone.html",
-        {
-            "source": _fontes()[kind],
-            "job": {"state": "done", "file_name": "enviado", "result": "processado"},
-        },
-    )
 
 
 @login_required

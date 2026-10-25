@@ -543,7 +543,7 @@ class IngestTests(TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "synth.ofx"
             path.write_bytes(data)
-            report = ingest_ofx(path, company)
+            report = ingest_ofx(data, path.name, company)
         self.assertTrue(report["ok"])
         self.assertEqual(report["txns"], 2)
         self.assertEqual(models.BankTransaction.objects.count(), 2)
@@ -564,7 +564,7 @@ class IngestTests(TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "contas.csv"
             path.write_text(csv, encoding="utf-8")
-            report = ingest_csv(path, company)
+            report = ingest_csv(csv.encode("utf-8"), path.name, company)
         self.assertTrue(report["ok"])
         self.assertEqual(report["items"], 2)
         self.assertEqual(models.ExpectedItem.objects.filter(direction="outflow").count(), 1)
@@ -577,6 +577,58 @@ class HealthTests(TestCase):
             resp = self.client.get(url)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json(), {"status": "ok"})
+
+
+class UploadTests(TestCase):
+    def setUp(self):
+        self.company = _company()
+        _login(self.client, self.company)
+
+    def _upload(self, kind, name, content):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return self.client.post(
+            f"/importacao/enviar/{kind}/",
+            {"files": SimpleUploadedFile(name, content)},
+        )
+
+    def test_upload_ofx_ingests_transactions(self):
+        from conciliador_synth.ofx import SynthTxn, make_ofx
+
+        data = make_ofx(
+            [SynthTxn(date(2026, 1, 5), 50000, "PIX RECEBIDO", fitid="t1")],
+            ledger_balance_cents=50000,
+        )
+        resp = self._upload("ofx", "extrato.ofx", data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("1 lançamento", resp.content.decode())
+        self.assertEqual(models.BankTransaction.objects.count(), 1)
+        job = models.ImportJob.objects.get()
+        self.assertEqual(job.state, "done")
+
+    def test_upload_csv_ingests_items(self):
+        csv = (
+            b"tipo;valor;vencimento;contraparte_nome;contraparte_documento;"
+            b"documento_numero;descricao\n"
+            b"pagar;250,90;10/11/2026;Fornecedor Exemplo SA;12.345.678/0001-95;2002;Compra\n"
+        )
+        resp = self._upload("csv", "contas.csv", csv)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(models.ExpectedItem.objects.filter(direction="outflow").count(), 1)
+
+    def test_upload_invalid_file_is_error(self):
+        resp = self._upload("ofx", "ruim.ofx", b"isso nao e ofx")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("dropzone--error", resp.content.decode())
+        self.assertEqual(models.ImportJob.objects.get().state, "error")
+
+    def test_contador_cannot_upload(self):
+        from django.test import Client
+
+        c = Client()
+        _login(c, self.company, Role.ACCOUNTANT)
+        resp = c.post("/importacao/enviar/ofx/", {})
+        self.assertEqual(resp.status_code, 403)
 
 
 class AccountsTests(TestCase):

@@ -67,7 +67,7 @@ class Command(BaseCommand):
                 ),
                 encoding="utf-8",
             )
-            csv_report = ingest.ingest_csv(csv_path, company)
+            csv_report = ingest.ingest_csv(csv_path.read_bytes(), csv_path.name, company)
 
             # 2. Documentos reais do corpus (NF-e) — até 3 notas a receber.
             reais = list(
@@ -124,7 +124,7 @@ class Command(BaseCommand):
             )
             ofx_path = Path(tmp) / "conciliador-demo-extrato.ofx"
             ofx_path.write_bytes(ofx)
-            ofx_report = ingest.ingest_ofx(ofx_path, company)
+            ofx_report = ingest.ingest_ofx(ofx_path.read_bytes(), ofx_path.name, company)
 
         # 4. Saldo inicial conhecido (0) → o fechamento do extrato pode ser conferido.
         BankAccount.objects.filter(
