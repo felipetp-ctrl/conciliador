@@ -32,11 +32,23 @@ _CHAVE = re.compile(r"[0-9]{6}[0-9A-Z]{12}[0-9]{26}")
 # aceita letras (CNPJ alfanumérico); o XSD 1.01 ainda não prevê, mas o projeto o suporta.
 _NFSE_CHAVE = re.compile(r"[0-9]{9}[0-9A-Z]{14}[0-9]{27}")
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_NFE_MODEL = "55"
+_HOMOLOGATION = "2"  # ide/tpAmb: 1 produção, 2 homologação
+_AUTHORIZED = ("100", "150")  # protNFe/infProt/cStat: autorizado (150 = fora do prazo)
+_NO_PAYMENT = "90"  # pag/detPag/tPag: sem pagamento
+_MAX_ID_PART = 60  # nenhum componente de id passa de 60 caracteres (nDup: até 60 no XSD)
+_NFSE_CANCEL_EVENTS = ("e101101", "e105102")  # cancelamento / cancelamento por substituição
 
 
 @dataclass(frozen=True)
 class FiscalParseResult:
-    """Itens esperados e ids (``"nfe:<chave>"``) de notas canceladas por evento."""
+    """Itens esperados e prefixos de id de notas canceladas.
+
+    ``cancelled_ids`` traz ``"nfe:<chave>"`` / ``"nfse:<chave>"``: o id de cada item é
+    ``<prefixo>:<parcela>``, então quem chama casa os itens por prefixo
+    (``item.id.startswith(c + ":")``).
+    Vem de eventos de cancelamento e, na NFS-e, também da nota substituída (``subst/chSubstda``).
+    """
 
     items: tuple[ExpectedItem, ...]
     cancelled_ids: tuple[str, ...]
@@ -182,7 +194,35 @@ def _build_item(
     )
 
 
-def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[ExpectedItem, ...]:
+def _unsupported(message: str) -> ParseError:
+    return ParseError("unsupported_document", message)
+
+
+def _check_nfe_kind(ide: Element | None, proc: Element | None) -> str:
+    """Recusa o que não é NF-e modelo 55 autorizada em produção; devolve o ``tpNF``."""
+    mod = _require(ide, "mod")
+    if mod != _NFE_MODEL:
+        raise _unsupported(f"Modelo de documento fiscal não suportado ({mod[:5]!r}): só NF-e 55.")
+    if _text(ide, "tpAmb") == _HOMOLOGATION:
+        raise _unsupported("NF-e não suportada: nota de homologação (teste).")
+    status = _text(proc, "protNFe/infProt/cStat")
+    if status is not None and status not in _AUTHORIZED:
+        raise _unsupported(f"NF-e não suportada: nota não autorizada (cStat {status[:5]!r}).")
+    tp_nf = _text(ide, "tpNF")
+    if tp_nf not in ("0", "1"):
+        raise _invalid("NF-e com ide/tpNF ausente ou inválido (esperado 0 ou 1).")
+    return tp_nf
+
+
+def _id_part(text: str, field: str) -> str:
+    if len(text) > _MAX_ID_PART:
+        raise _invalid(f"Campo {field} com mais de {_MAX_ID_PART} caracteres.")
+    return text
+
+
+def _parse_nfe(
+    nfe: Element, proc: Element | None, company: str, default_due_days: int
+) -> tuple[ExpectedItem, ...]:
     inf = nfe.find(_q("infNFe"))
     if inf is None:
         raise _invalid("NF-e sem o elemento infNFe.")
@@ -190,6 +230,8 @@ def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[Expec
     if not raw_id.startswith("NFe"):
         raise _invalid("NF-e sem o atributo Id da chave de acesso.")
     chave = _chave(raw_id[3:], "infNFe/@Id")
+    ide = inf.find(_q("ide"))
+    tp_nf = _check_nfe_kind(ide, proc)
 
     emit = _party(inf.find(_q("emit")))
     dest = _party(inf.find(_q("dest")))
@@ -197,8 +239,14 @@ def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[Expec
     if sides is None:
         return ()
     me, other, direction = sides
+    # _sides devolve a direção de uma nota de saída (tpNF=1); numa entrada (tpNF=0) inverte:
+    # emitente+entrada = a pagar; destinatária+entrada (ex.: devolução) = a receber.
+    if tp_nf == "0":
+        direction = Direction.OUTFLOW if direction is Direction.INFLOW else Direction.INFLOW
+    payments = [_text(d, "tPag") for d in inf.findall(_q("pag/detPag"))]
+    if payments and all(p == _NO_PAYMENT for p in payments):
+        return ()  # sem pagamento (ex.: bonificação, remessa): nada a conciliar
 
-    ide = inf.find(_q("ide"))
     issued = _date(_text(ide, "dhEmi") or _require(ide, "dEmi"), "ide/dhEmi")
     number = _text(ide, "nNF")
 
@@ -233,7 +281,7 @@ def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[Expec
     items: list[ExpectedItem] = []
     used: set[str] = set()
     for position, dup in enumerate(dups, start=1):
-        suffix = _text(dup, "nDup") or str(position)
+        suffix = _id_part(_text(dup, "nDup") or str(position), "cobr/dup/nDup")
         if suffix in used:
             suffix = f"{suffix}-{position}"
         used.add(suffix)
@@ -243,7 +291,10 @@ def _parse_nfe(nfe: Element, company: str, default_due_days: int) -> tuple[Expec
     return tuple(items)
 
 
-def _parse_nfse(nfse: Element, company: str, default_due_days: int) -> tuple[ExpectedItem, ...]:
+def _parse_nfse(
+    nfse: Element, company: str, default_due_days: int
+) -> tuple[tuple[ExpectedItem, ...], tuple[str, ...]]:
+    """Itens e, se a NFS-e substitui outra (``infDPS/subst/chSubstda``), a nota substituída."""
     inf = nfse.find(_q("infNFSe", NFSE_NS))
     if inf is None:
         raise _invalid("NFS-e sem o elemento infNFSe.")
@@ -255,11 +306,15 @@ def _parse_nfse(nfse: Element, company: str, default_due_days: int) -> tuple[Exp
     dps = inf.find(_q("DPS/infDPS", NFSE_NS))
     if dps is None:
         raise _invalid("NFS-e sem o elemento DPS/infDPS.")
+    substituted = _text(dps, "subst/chSubstda", NFSE_NS)
+    cancelled: tuple[str, ...] = ()
+    if substituted is not None:
+        cancelled = (f"nfse:{_chave(substituted, 'infDPS/subst/chSubstda', _NFSE_CHAVE)}",)
     prest = _party(dps.find(_q("prest", NFSE_NS)), NFSE_NS)
     toma = _party(dps.find(_q("toma", NFSE_NS)), NFSE_NS)  # tomador é opcional
     sides = _sides(prest, toma, company, "prestadora nem como tomadora")
     if sides is None:
-        return ()
+        return (), cancelled
     me, other, direction = sides
 
     issued = _date(_require(dps, "dhEmi", NFSE_NS), "DPS/infDPS/dhEmi")
@@ -287,8 +342,8 @@ def _parse_nfse(nfse: Element, company: str, default_due_days: int) -> tuple[Exp
             )
         net = gross - sum(v for _, v in withholdings)
     if net == 0:
-        return ()
-    return (
+        return (), cancelled
+    item = (
         _build_item(
             item_id=f"nfse:{chave}:1",
             source=Source.NFSE,
@@ -303,10 +358,11 @@ def _parse_nfse(nfse: Element, company: str, default_due_days: int) -> tuple[Exp
             me=me,
         ),
     )
+    return item, cancelled
 
 
 def _parse_nfse_event(root: Element) -> tuple[str, ...]:
-    """Cancelamento (``e101101``) de NFS-e.
+    """Cancelamento (``e101101``) ou cancelamento por substituição (``e105102``) de NFS-e.
 
     O ``evento`` (com ``infEvento/dhProc``, gerado pela autoridade ao registrar) é o evento
     registrado; um ``pedRegEvento`` solto é só o pedido e não cancela. O leiaute do evento não
@@ -320,7 +376,7 @@ def _parse_nfse_event(root: Element) -> tuple[str, ...]:
     pedido = info.find(_q("pedRegEvento/infPedReg", NFSE_NS))
     if pedido is None:
         raise _invalid("Evento sem o elemento pedRegEvento/infPedReg.")
-    if pedido.find(_q("e101101", NFSE_NS)) is None:
+    if all(pedido.find(_q(name, NFSE_NS)) is None for name in _NFSE_CANCEL_EVENTS):
         return ()
     chave = _chave(_require(pedido, "chNFSe", NFSE_NS), "infPedReg/chNFSe", _NFSE_CHAVE)
     if _text(info, "dhProc", NFSE_NS) is None:
@@ -359,6 +415,11 @@ def parse_fiscal_xml(
     inválido é erro de programação de quem chama e levanta ``ValueError``. A comparação com
     emitente/destinatário é feita pela raiz do CNPJ.
 
+    NF-e: só modelo 55, autorizada (``protNFe`` com ``cStat`` 100/150, quando presente) e de
+    produção; senão ``unsupported_document``. A direção vem de ``ide/tpNF`` e do papel da
+    empresa (emitente+saída e destinatária+entrada = a receber; os outros dois = a pagar).
+    Nota cujos ``pag/detPag/tPag`` são todos "90" (sem pagamento) não gera item.
+
     Levanta ``ParseError`` (``too_large``, ``xml_forbidden``, ``invalid_format``,
     ``unsupported_document`` ou ``not_company_document``) para qualquer problema no arquivo.
     """
@@ -368,12 +429,14 @@ def parse_fiscal_xml(
     root = safe_parse_xml(data)
     tag = root.tag
     if tag == _q("NFSe", NFSE_NS):
-        return FiscalParseResult(_parse_nfse(root, company, default_due_days), ())
+        return FiscalParseResult(*_parse_nfse(root, company, default_due_days))
     if tag in (_q("evento", NFSE_NS), _q("pedRegEvento", NFSE_NS)):
         return FiscalParseResult((), _parse_nfse_event(root))
     if tag == _q("procEventoNFe"):
         return FiscalParseResult((), _parse_event(root))
+    proc: Element | None = None
     if tag == _q("nfeProc"):
+        proc = root
         nfe = root.find(_q("NFe"))
     elif tag == _q("NFe"):
         nfe = root
@@ -384,4 +447,4 @@ def parse_fiscal_xml(
         )
     if nfe is None:
         raise _invalid("nfeProc sem o elemento NFe.")
-    return FiscalParseResult(_parse_nfe(nfe, company, default_due_days), ())
+    return FiscalParseResult(_parse_nfe(nfe, proc, company, default_due_days), ())

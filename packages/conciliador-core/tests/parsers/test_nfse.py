@@ -226,3 +226,47 @@ def test_nfse_cancellation_without_event_id_is_invalid_format():
         b'<infEvento Id="EVT' + K.encode() + b'101101001">', b"<infEvento>"
     )
     assert _code(data) == "invalid_format"
+
+
+K_OLD = "5" * 50
+
+
+def test_nfse_substitution_cancels_substituted_note():
+    r = parse_fiscal_xml(_nfse(substitutes=K_OLD), CO)
+    assert [i.id for i in r.items] == [f"nfse:{K}:1"]
+    assert r.cancelled_ids == (f"nfse:{K_OLD}",)
+
+
+def test_nfse_without_substitution_cancels_nothing():
+    assert parse_fiscal_xml(_nfse(), CO).cancelled_ids == ()
+
+
+def test_nfse_substitution_reported_even_without_item():
+    r = parse_fiscal_xml(_nfse(net_cents=0, substitutes=K_OLD), CO)
+    assert r.items == () and r.cancelled_ids == (f"nfse:{K_OLD}",)
+
+
+def test_nfse_substitution_bad_chave_is_invalid_format():
+    assert _code(_nfse(substitutes="123")) == "invalid_format"
+
+
+def test_nfse_cancellation_by_substitution_event():
+    r = parse_fiscal_xml(make_nfse_cancellation(K_OLD, substituta=K), CO)
+    assert r.cancelled_ids == (f"nfse:{K_OLD}",) and r.items == ()
+
+
+def test_nfse_substitution_event_follows_same_rules():
+    assert (
+        parse_fiscal_xml(
+            make_nfse_cancellation(K_OLD, substituta=K, registered=False), CO
+        ).cancelled_ids
+        == ()
+    )
+    assert (
+        parse_fiscal_xml(make_nfse_cancellation(K_OLD, substituta=K, id_chave=K), CO).cancelled_ids
+        == ()
+    )
+    no_proc = make_nfse_cancellation(K_OLD, substituta=K).replace(
+        b"<dhProc>2026-10-12T09:00:05-03:00</dhProc>", b""
+    )
+    assert parse_fiscal_xml(no_proc, CO).cancelled_ids == ()

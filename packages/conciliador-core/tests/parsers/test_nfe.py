@@ -251,3 +251,69 @@ def test_amount_with_three_decimals_not_misread():
 def test_synth_rejects_unknown_withholding():
     with pytest.raises(ValueError):
         _nfe(withholdings={"vFoo": 1})
+
+
+THIRD = "12ABC34501DE35"
+
+
+@pytest.mark.parametrize(
+    ("emit", "dest", "tp_nf", "direction"),
+    [
+        (CO, THIRD, "1", Direction.INFLOW),  # venda emitida pela empresa
+        (CO, THIRD, "0", Direction.OUTFLOW),  # entrada emitida pela empresa (ex.: compra de PF)
+        (THIRD, CO, "1", Direction.OUTFLOW),  # compra: fornecedor emitiu a saída
+        (THIRD, CO, "0", Direction.INFLOW),  # devolução emitida pelo terceiro como entrada
+    ],
+)
+def test_direction_from_tpnf_and_company_role(emit, dest, tp_nf, direction):
+    (it,) = parse_fiscal_xml(_nfe(emit_cnpj=emit, dest_doc=dest, tp_nf=tp_nf), CO).items
+    assert it.direction is direction
+    assert it.counterpart_doc == THIRD
+
+
+@pytest.mark.parametrize("tp_nf", [None, "2", "x"])
+def test_missing_or_invalid_tpnf_is_invalid_format(tp_nf):
+    assert _code(_nfe(tp_nf=tp_nf)) == "invalid_format"
+
+
+def test_sem_pagamento_yields_no_item():
+    assert parse_fiscal_xml(_nfe(t_pag=["90"]), CO).items == ()
+    assert parse_fiscal_xml(_nfe(t_pag=["90", "90"]), CO).items == ()
+    assert len(parse_fiscal_xml(_nfe(t_pag=["90", "15"]), CO).items) == 1
+    assert len(parse_fiscal_xml(_nfe(t_pag=["01"]), CO).items) == 1
+
+
+@pytest.mark.parametrize("mod", ["65", "57"])
+def test_model_other_than_55_unsupported(mod):
+    assert _code(_nfe(mod=mod)) == "unsupported_document"
+
+
+def test_missing_model_is_invalid_format():
+    assert _code(_nfe(mod=None)) == "invalid_format"
+
+
+def test_homologacao_unsupported():
+    with pytest.raises(ParseError) as e:
+        parse_fiscal_xml(_nfe(tp_amb="2"), CO)
+    assert e.value.code == "unsupported_document"
+    assert "nota de homologação (teste)" in e.value.message
+    assert len(parse_fiscal_xml(_nfe(tp_amb=None), CO).items) == 1
+
+
+@pytest.mark.parametrize("status", ["110", "301", "302", "204"])
+def test_not_authorized_unsupported(status):
+    with pytest.raises(ParseError) as e:
+        parse_fiscal_xml(_nfe(prot_status=status), CO)
+    assert e.value.code == "unsupported_document"
+    assert "nota não autorizada" in e.value.message
+
+
+@pytest.mark.parametrize("status", ["100", "150", None])
+def test_authorized_or_without_protocol_accepted(status):
+    assert len(parse_fiscal_xml(_nfe(prot_status=status), CO).items) == 1
+
+
+def test_ndup_longer_than_60_is_invalid_format():
+    ok = _nfe(duplicatas=[("A" * 60, date(2026, 11, 1), 100000)])
+    assert parse_fiscal_xml(ok, CO).items[0].id == f"nfe:{K}:{'A' * 60}"
+    assert _code(_nfe(duplicatas=[("A" * 61, date(2026, 11, 1), 100000)])) == "invalid_format"

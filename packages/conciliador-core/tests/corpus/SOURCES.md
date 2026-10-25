@@ -59,7 +59,8 @@ redirecionamentos em loop a download automatizado (curl), então o XSD foi confe
 Caminhos confirmados: `infNFe/@Id` (`NFe` + 44 caracteres; padrão `[0-9]{6}[0-9A-Z]{12}[0-9]{26}`, ou
 seja, aceita CNPJ alfanumérico), `ide/nNF`, `ide/dhEmi`, `emit/CNPJ|CPF`, `dest/CNPJ|CPF|idEstrangeiro`,
 `total/ICMSTot/vNF`, `total/retTrib/{vRetPIS,vRetCOFINS,vRetCSLL,vIRRF,vRetPrev}`,
-`cobr/dup/{nDup,dVenc,vDup}`; evento: `procEventoNFe/evento/infEvento/{chNFe,tpEvento}` e
+`cobr/dup/{nDup,dVenc,vDup}` (`nDup` com até 60 caracteres), `ide/{mod,tpNF,tpAmb}`,
+`pag/detPag/tPag` ("90" = sem pagamento) e `nfeProc/protNFe/infProt/cStat`; evento: `procEventoNFe/evento/infEvento/{chNFe,tpEvento}` e
 `retEvento/infEvento/cStat`.
 
 # Corpus fiscal (NFS-e padrão nacional)
@@ -80,7 +81,9 @@ dentro do `infNFSe`), `infDPS/{dhEmi,prest/CNPJ|CPF,toma/CNPJ|CPF}`, `infDPS/val
 `infDPS/valores/trib/tribMun/tpRetISSQN` (1 não retido, 2 tomador, 3 intermediário),
 `infDPS/valores/trib/tribFed/{vRetCP,vRetIRRF,vRetCSLL}`; evento: raiz `evento/infEvento`
 (`verAplic, ambGer, nSeqEvento, dhProc, nDFSe`, `Id` `EVT`+50+6+3) com
-`pedRegEvento/infPedReg/{chNFSe, e101101}`; raiz `pedRegEvento` é só o pedido. O XSD 1.01 usa
+`pedRegEvento/infPedReg/{chNFSe, e101101 | e105102}` (`e105102` = cancelamento por
+substituição, com `chSubstituta`); raiz `pedRegEvento` é só o pedido. Substituição na própria nota:
+`infDPS/subst/chSubstda` (`TCSubstituicao`, chave da NFS-e substituída), conferido em 2026-10-24. O XSD 1.01 usa
 `TSCNPJ` `[0-9]{14}` (sem letras); o parser aceita CNPJ alfanumérico por exigência do projeto.
 
 Licença do `nfelib` verificada em 2026-10-24: **MIT** (`pyproject.toml` do repositório:

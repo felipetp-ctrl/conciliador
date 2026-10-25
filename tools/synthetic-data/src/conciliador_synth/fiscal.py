@@ -37,8 +37,19 @@ def make_nfe(
     duplicatas: Sequence[tuple[str, date, int]] = (),
     withholdings: Mapping[str, int] = {},  # noqa: B006 - nunca é alterado
     number: str = "123",
+    tp_nf: str | None = "1",
+    mod: str | None = "55",
+    tp_amb: str | None = "1",
+    t_pag: Sequence[str] = (),
+    prot_status: str | None = "100",
 ) -> bytes:
-    """NF-e sintética (``nfeProc``). Valores em centavos; ``dest_doc`` com 11 caracteres é CPF."""
+    """NF-e sintética (``nfeProc``). Valores em centavos; ``dest_doc`` com 11 caracteres é CPF.
+
+    ``tp_nf`` (``ide/tpNF``: 1 saída, 0 entrada), ``mod`` (``ide/mod``) e ``tp_amb``
+    (``ide/tpAmb``: 1 produção, 2 homologação) são omitidos com ``None``. ``t_pag`` gera um
+    ``pag/detPag`` por meio de pagamento (``tPag``; "90" = sem pagamento); vazio omite ``pag``.
+    ``prot_status`` é o ``protNFe/infProt/cStat`` (``None`` omite o ``protNFe``).
+    """
     unknown = set(withholdings) - set(WITHHOLDING_NAMES)
     if unknown:
         raise ValueError(f"Retenção desconhecida: {sorted(unknown)}")
@@ -53,15 +64,31 @@ def make_nfe(
         for n, d, v in duplicatas
     )
     cobr = f"<cobr>{dups}</cobr>" if dups else ""
+    det_pag = "".join(
+        f"<detPag><tPag>{escape(t)}</tPag><vPag>{_money(total_cents)}</vPag></detPag>"
+        for t in t_pag
+    )
+    pag = f"<pag>{det_pag}</pag>" if det_pag else ""
+
+    def leaf(tag: str, value: str | None) -> str:
+        return f"<{tag}>{escape(value)}</{tag}>" if value is not None else ""
+
+    prot = (
+        f'<protNFe versao="4.00"><infProt><tpAmb>1</tpAmb><chNFe>{chave}</chNFe>'
+        f"{leaf('cStat', prot_status)}</infProt></protNFe>"
+        if prot_status is not None
+        else ""
+    )
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<nfeProc xmlns="{NFE_NS}" versao="4.00"><NFe><infNFe versao="4.00" Id="NFe{chave}">'
-        f"<ide><mod>55</mod><nNF>{escape(number)}</nNF>"
-        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi></ide>"
+        f"<ide>{leaf('mod', mod)}<nNF>{escape(number)}</nNF>"
+        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi>"
+        f"{leaf('tpNF', tp_nf)}{leaf('tpAmb', tp_amb)}</ide>"
         f"<emit>{_party_doc(emit_cnpj)}<xNome>EMITENTE SINTETICO LTDA</xNome></emit>"
         f"<dest>{_party_doc(dest_doc)}<xNome>DESTINATARIO SINTETICO</xNome></dest>"
         f"<total><ICMSTot><vNF>{_money(total_cents)}</vNF></ICMSTot>{ret_xml}</total>"
-        f"{cobr}</infNFe></NFe></nfeProc>"
+        f"{cobr}{pag}</infNFe></NFe>{prot}</nfeProc>"
     )
     return xml.encode("utf-8")
 
@@ -104,8 +131,11 @@ def make_nfse(
     number: str = "1",
     iss_amount_cents: int = 0,
     withholdings: Mapping[str, int] | None = None,
+    substitutes: str | None = None,
 ) -> bytes:
     """NFS-e nacional sintética (``NFSe``). Valores em centavos.
+
+    ``substitutes`` é a chave (50 caracteres) da NFS-e substituída (``infDPS/subst/chSubstda``).
 
     ``chave`` são os 50 caracteres após ``NFS`` no ``infNFSe/@Id``. ``net_cents=None`` omite
     ``valores/vLiq``. ``iss_withheld_cents > 0`` marca o ISSQN como retido pelo tomador
@@ -132,6 +162,12 @@ def make_nfse(
         if tomador_doc is not None
         else ""
     )
+    subst = (
+        f"<subst><chSubstda>{escape(substitutes)}</chSubstda><cMotivo>99</cMotivo>"
+        "<xMotivo>Substituicao sintetica</xMotivo></subst>"
+        if substitutes is not None
+        else ""
+    )
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<NFSe xmlns="{NFSE_NS}" versao="1.01"><infNFSe Id="NFS{chave}">'
@@ -139,7 +175,7 @@ def make_nfse(
         f"<emit>{_party_doc(prestador_cnpj)}<xNome>PRESTADOR SINTETICO LTDA</xNome></emit>"
         f"<valores>{iss}{liq}</valores>"
         '<DPS versao="1.01"><infDPS>'
-        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi>"
+        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi>{subst}"
         f"<prest>{_party_doc(prestador_cnpj)}</prest>{toma}"
         f"<valores><vServPrest><vServ>{_money(service_cents)}</vServ></vServPrest>"
         f"<trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>{2 if retained else 1}</tpRetISSQN>"
@@ -150,20 +186,36 @@ def make_nfse(
 
 
 def make_nfse_cancellation(
-    chave: str, *, registered: bool = True, id_chave: str | None = None
+    chave: str,
+    *,
+    registered: bool = True,
+    id_chave: str | None = None,
+    substituta: str | None = None,
 ) -> bytes:
     """Evento de cancelamento de NFS-e (``e101101``).
 
     Por padrão é o ``evento`` já processado pela autoridade (traz ``dhProc``/``nDFSe``).
     ``registered=False`` gera só o ``pedRegEvento`` (mero pedido); ``id_chave`` altera a
-    chave embutida no ``Id`` do ``infEvento``.
+    chave embutida no ``Id`` do ``infEvento``. ``substituta`` (chave da NFS-e nova) gera o
+    cancelamento por substituição (``e105102`` com ``chSubstituta``).
     """
+    if substituta is None:
+        code = "101101"
+        detail = (
+            "<e101101><xDesc>Cancelamento de NFS-e</xDesc>"
+            "<cMotivo>1</cMotivo><xMotivo>Erro na emissao</xMotivo></e101101>"
+        )
+    else:
+        code = "105102"
+        detail = (
+            "<e105102><xDesc>Cancelamento de NFS-e por Substituicao</xDesc>"
+            f"<cMotivo>99</cMotivo><chSubstituta>{escape(substituta)}</chSubstituta></e105102>"
+        )
     ped = (
         '<pedRegEvento versao="1.01">'
-        f'<infPedReg Id="PRE{chave}101101"><tpAmb>1</tpAmb><verAplic>SINTETICO</verAplic>'
+        f'<infPedReg Id="PRE{chave}{code}"><tpAmb>1</tpAmb><verAplic>SINTETICO</verAplic>'
         "<dhEvento>2026-10-12T09:00:00-03:00</dhEvento><CNPJAutor>11222333000181</CNPJAutor>"
-        f"<chNFSe>{chave}</chNFSe><e101101><xDesc>Cancelamento de NFS-e</xDesc>"
-        "<cMotivo>1</cMotivo><xMotivo>Erro na emissao</xMotivo></e101101>"
+        f"<chNFSe>{chave}</chNFSe>{detail}"
         "</infPedReg></pedRegEvento>"
     )
     if not registered:
@@ -174,7 +226,7 @@ def make_nfse_cancellation(
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<evento xmlns="{NFSE_NS}" versao="1.01">'
-        f'<infEvento Id="EVT{id_chave or chave}101101001"><verAplic>SINTETICO</verAplic>'
+        f'<infEvento Id="EVT{id_chave or chave}{code}001"><verAplic>SINTETICO</verAplic>'
         "<ambGer>1</ambGer><nSeqEvento>1</nSeqEvento><dhProc>2026-10-12T09:00:05-03:00</dhProc>"
         f"<nDFSe>1</nDFSe>{ped}</infEvento></evento>"
     )
