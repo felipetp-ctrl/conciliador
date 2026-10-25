@@ -45,8 +45,13 @@ def _database_from_url(url: str) -> dict:
     }
 
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
+SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
 DEBUG = _env_bool("DEBUG", True)
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "dev-only-insecure-key"
+    else:
+        raise RuntimeError("Defina SECRET_KEY no ambiente quando DEBUG=0.")
 
 ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS") or (["*"] if DEBUG else [])
 CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")

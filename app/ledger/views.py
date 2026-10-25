@@ -6,6 +6,7 @@ Mutações (confirmar/recusar/desfazer) gravam vínculos e respondem com ``HX-Re
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 from accounts.models import Role
@@ -20,6 +21,8 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from . import export, ingest, models, services
+
+logger = logging.getLogger(__name__)
 
 _RULE_KEY = {
     "Regra 1": "document",
@@ -635,6 +638,7 @@ def health(request: HttpRequest):
             cursor.execute("SELECT 1")
             cursor.fetchone()
     except Exception:  # noqa: BLE001 — qualquer falha de banco vira 503
+        logger.exception("health check falhou")
         return JsonResponse({"status": "error"}, status=503)
     return JsonResponse({"status": "ok"})
 
