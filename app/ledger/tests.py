@@ -6,6 +6,7 @@ Dados 100% sintéticos — nenhum dado real de cliente.
 from __future__ import annotations
 
 from datetime import date
+from unittest import mock
 
 from accounts.models import Invite, Membership, Role, User
 from conciliador_ui.templatetags.conciliador_ds import brl as brl_filter
@@ -577,6 +578,34 @@ class HealthTests(TestCase):
             resp = self.client.get(url)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json(), {"status": "ok"})
+
+    @mock.patch("ledger.views.connection.cursor", side_effect=RuntimeError("db down"))
+    def test_health_returns_503_when_db_is_down(self, _cursor):
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.json(), {"status": "error"})
+
+
+class DeploySettingsTests(TestCase):
+    def test_database_url_parsing(self):
+        import conciliador.settings as project_settings
+
+        db = project_settings._database_from_url(
+            "postgres://user:sen%40@db.example.com:5432/conciliador?sslmode=require"
+        )
+        self.assertEqual(db["ENGINE"], "django.db.backends.postgresql")
+        self.assertEqual(db["NAME"], "conciliador")
+        self.assertEqual(db["USER"], "user")
+        self.assertEqual(db["PASSWORD"], "sen@")
+        self.assertEqual(db["HOST"], "db.example.com")
+        self.assertEqual(db["PORT"], "5432")
+        self.assertEqual(db["OPTIONS"]["sslmode"], "require")
+
+    def test_database_url_rejects_other_scheme(self):
+        import conciliador.settings as project_settings
+
+        with self.assertRaises(ValueError):
+            project_settings._database_from_url("mysql://localhost/conciliador")
 
 
 class PeriodTests(TestCase):

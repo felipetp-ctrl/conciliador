@@ -9,6 +9,9 @@ dependencies = [
     "conciliador-core",
     "pyotp>=2.9,<3",
     "fpdf2>=2.8,<3",
+    "psycopg[binary]>=3.2,<4",
+    "whitenoise>=6.7,<7",
+    "gunicorn>=23,<24",
 ]
 
 [tool.uv.sources]

@@ -14,6 +14,7 @@ from conciliador_core import ParseError
 from conciliador_core.money import parse_brl_amount
 from conciliador_ui.landing_context import landing_context
 from django.contrib.auth.decorators import login_required
+from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -628,7 +629,13 @@ def landing(request: HttpRequest):
 
 
 def health(request: HttpRequest):
-    """Sonda de saúde (usada pelo processo local e, depois, pelo deploy)."""
+    """Sonda de saúde: processo de pé e banco respondendo (usada pelo deploy)."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:  # noqa: BLE001 — qualquer falha de banco vira 503
+        return JsonResponse({"status": "error"}, status=503)
     return JsonResponse({"status": "ok"})
 
 
