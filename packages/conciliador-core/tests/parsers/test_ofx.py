@@ -39,7 +39,7 @@ def test_variants_parse_identically(version, encoding, decimal_comma):
     assert st.transactions[0].documents == ("52998224725",)
     assert st.transactions[0].fitid == "F1"
     assert st.transactions[0].posted_on == date(2026, 10, 1)
-    assert st.transactions[0].dedup_key == ""
+    assert len(st.transactions[0].dedup_key) == 64
     assert st.ledger_balance_cents == 500000
     assert st.account.bank_id == "0341"
     assert st.account.branch == "1234"

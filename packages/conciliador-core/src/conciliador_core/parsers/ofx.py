@@ -7,9 +7,11 @@ XML, logo não há superfície para XXE ou expansão de entidades.
 
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from html import unescape
 
+from conciliador_core.dedup import compute_dedup_keys
 from conciliador_core.documents import find_documents
 from conciliador_core.errors import ParseError
 from conciliador_core.models import BankAccountRef, BankTransaction, Statement
@@ -160,14 +162,20 @@ def parse_ofx(data: bytes) -> Statement:
         raise _invalid("O arquivo não é um extrato OFX válido.")
 
     balance_text = balance.get("BALAMT", "")
+    account_ref = BankAccountRef(
+        bank_id=account.get("BANKID", ""),
+        branch=account.get("BRANCHID") or None,
+        account_number=account.get("ACCTID", ""),
+    )
+    keys = compute_dedup_keys(
+        account_ref, [(t.posted_on, t.amount_cents, t.memo) for t in transactions]
+    )
     return Statement(
-        account=BankAccountRef(
-            bank_id=account.get("BANKID", ""),
-            branch=account.get("BRANCHID") or None,
-            account_number=account.get("ACCTID", ""),
-        ),
+        account=account_ref,
         start=_optional_date(head.get("DTSTART")),
         end=_optional_date(head.get("DTEND")),
         ledger_balance_cents=parse_ofx_amount(balance_text) if balance_text else None,
-        transactions=tuple(transactions),
+        transactions=tuple(
+            replace(t, dedup_key=k) for t, k in zip(transactions, keys, strict=True)
+        ),
     )
