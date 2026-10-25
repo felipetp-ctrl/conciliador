@@ -58,6 +58,29 @@ def test_nfse_without_vliq_subtracts_withholding():
     assert (it.amount_cents, it.gross_cents) == (190000, 200000)
 
 
+def test_nfse_generator_emits_official_structure():
+    # O gerador segue o leiaute 1.01 completo (campos obrigatórios + assinatura XMLDSig),
+    # não um XML simplificado. A assinatura é estrutural mas não criptografada de verdade.
+    data = _nfse()
+    for fragment in (
+        b"<xLocEmi>SAO PAULO</xLocEmi>",
+        b"<xLocPrestacao>SAO PAULO</xLocPrestacao>",
+        b"<xTribNac>SERVICOS DE INFORMATICA</xTribNac>",
+        b"<verAplic>SINTETICO</verAplic>",
+        b"<ambGer>1</ambGer>",
+        b"<tpEmis>1</tpEmis>",
+        b"<dhProc>2026-10-10T12:00:00-03:00</dhProc>",
+        b"<nDFSe>1</nDFSe>",
+        b"<enderNac><xLgr>RUA SINTETICA</xLgr>",
+        b"<regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib>",
+        b"<serv><locPrest><cLocPrestacao>3550308</cLocPrestacao></locPrest>",
+        b"<totTrib><indTotTrib>0</indTotTrib></totTrib>",
+        b'<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">',
+        b"<ds:SignatureValue>AQIDBA==</ds:SignatureValue>",
+    ):
+        assert fragment in data, fragment
+
+
 def test_nfse_federal_withholdings_in_fixed_order():
     data = _nfse(
         net_cents=None,

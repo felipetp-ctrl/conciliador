@@ -13,6 +13,7 @@ from html import escape
 
 NFE_NS = "http://www.portalfiscal.inf.br/nfe"
 NFSE_NS = "http://www.sped.fazenda.gov.br/nfse"
+DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 NFSE_WITHHOLDING_NAMES = ("vRetCP", "vRetIRRF", "vRetCSLL")
 WITHHOLDING_NAMES = ("vRetPIS", "vRetCOFINS", "vRetCSLL", "vIRRF", "vRetPrev")
 
@@ -25,6 +26,33 @@ def _money(cents: int) -> str:
 def _party_doc(doc: str) -> str:
     tag = "CPF" if len(doc) == 11 else "CNPJ"
     return f"<{tag}>{escape(doc)}</{tag}>"
+
+
+def _digits(text: str) -> str:
+    """Só os dígitos de ``text``, para montar identificadores numéricos do XSD."""
+    return "".join(ch for ch in text if ch.isdigit())
+
+
+def _signature(reference_id: str) -> str:
+    """Assinatura XMLDSig estruturalmente válida (não criptografada de verdade).
+
+    O XSD 1.01 exige ``ds:Signature``; para dados sintéticos basta a estrutura correta.
+    """
+    b64 = "AQIDBA=="  # base64 arbitrário e válido
+    return (
+        f'<ds:Signature xmlns:ds="{DS_NS}"><ds:SignedInfo>'
+        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>'
+        '<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha256"/>'
+        f'<ds:Reference URI="#{reference_id}"><ds:Transforms>'
+        '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>'
+        '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>'
+        "</ds:Transforms>"
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>'
+        f"<ds:DigestValue>{b64}</ds:DigestValue>"
+        "</ds:Reference></ds:SignedInfo>"
+        f"<ds:SignatureValue>{b64}</ds:SignatureValue>"
+        "</ds:Signature>"
+    )
 
 
 def make_nfe(
@@ -133,15 +161,23 @@ def make_nfse(
     withholdings: Mapping[str, int] | None = None,
     substitutes: str | None = None,
 ) -> bytes:
-    """NFS-e nacional sintética (``NFSe``). Valores em centavos.
+    """NFS-e nacional sintética (``NFSe``), no leiaute oficial 1.01. Valores em centavos.
 
-    ``substitutes`` é a chave (50 caracteres) da NFS-e substituída (``infDPS/subst/chSubstda``).
+    Gera o subconjunto lido pelo parser **dentro da estrutura completa do XSD 1.01**, com os
+    campos obrigatórios (``xLocEmi``, ``emit/enderNac``, ``prest/regTrib``, ``serv``, ``totTrib``
+    etc.) e uma assinatura XMLDSig estruturalmente válida (não criptografada). Com ``chave``
+    (50 dígitos) e ``prestador_cnpj`` numéricos, o documento é estruturalmente idêntico ao XSD
+    oficial — exceto pelo campo ``serie``, cujo padrão no XSD 1.01 publicado (``^0{0,4}\\d{1,5}$``)
+    trata ``^``/``$`` como caracteres literais e rejeita até NFS-e reais; o gerador emite o valor
+    convencional ``1``.
 
     ``chave`` são os 50 caracteres após ``NFS`` no ``infNFSe/@Id``. ``net_cents=None`` omite
-    ``valores/vLiq``. ``iss_withheld_cents > 0`` marca o ISSQN como retido pelo tomador
-    (``tpRetISSQN`` 2) e informa ``valores/vISSQN``; ``iss_amount_cents`` informa o ISSQN devido
-    sem retenção (``tpRetISSQN`` 1). ``withholdings`` aceita ``vRetCP``,
-    ``vRetIRRF`` e ``vRetCSLL``. ``tomador_doc`` com 11 caracteres é CPF; ``None`` omite ``toma``.
+    ``valores/vLiq`` (variante simplificada, inválida contra o XSD) para exercitar o fallback do
+    parser. ``iss_withheld_cents > 0`` marca o ISSQN como retido pelo tomador (``tpRetISSQN`` 2)
+    e informa ``valores/vISSQN``; ``iss_amount_cents`` informa o ISSQN devido sem retenção
+    (``tpRetISSQN`` 1). ``withholdings`` aceita ``vRetCP``, ``vRetIRRF`` e ``vRetCSLL``.
+    ``tomador_doc`` com 11 caracteres é CPF; ``None`` omite ``toma``. ``substitutes`` é a chave
+    (50 caracteres) da NFS-e substituída (``infDPS/subst/chSubstda``).
     """
     withholdings = withholdings or {}
     unknown = set(withholdings) - set(NFSE_WITHHOLDING_NAMES)
@@ -168,19 +204,40 @@ def make_nfse(
         if substitutes is not None
         else ""
     )
+    dh_proc = f"{issued_on.isoformat()}T12:00:00-03:00"
+    nfse_id = f"NFS{chave}"
+    dps_id = "DPS" + (_digits(chave) + "0" * 42)[:42]
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        f'<NFSe xmlns="{NFSE_NS}" versao="1.01"><infNFSe Id="NFS{chave}">'
-        f"<nNFSe>{escape(number)}</nNFSe><cStat>100</cStat>"
-        f"<emit>{_party_doc(prestador_cnpj)}<xNome>PRESTADOR SINTETICO LTDA</xNome></emit>"
+        f'<NFSe xmlns="{NFSE_NS}" xmlns:ds="{DS_NS}" versao="1.01">'
+        f'<infNFSe Id="{nfse_id}">'
+        "<xLocEmi>SAO PAULO</xLocEmi><xLocPrestacao>SAO PAULO</xLocPrestacao>"
+        f"<nNFSe>{escape(number)}</nNFSe><xTribNac>SERVICOS DE INFORMATICA</xTribNac>"
+        "<verAplic>SINTETICO</verAplic><ambGer>1</ambGer><tpEmis>1</tpEmis>"
+        f"<cStat>100</cStat><dhProc>{dh_proc}</dhProc><nDFSe>1</nDFSe>"
+        f"<emit>{_party_doc(prestador_cnpj)}<xNome>PRESTADOR SINTETICO LTDA</xNome>"
+        "<enderNac><xLgr>RUA SINTETICA</xLgr><nro>100</nro><xBairro>CENTRO</xBairro>"
+        "<cMun>3550308</cMun><UF>SP</UF><CEP>01001000</CEP></enderNac></emit>"
         f"<valores>{iss}{liq}</valores>"
-        '<DPS versao="1.01"><infDPS>'
-        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi>{subst}"
-        f"<prest>{_party_doc(prestador_cnpj)}</prest>{toma}"
+        f'<DPS versao="1.01"><infDPS Id="{dps_id}">'
+        "<tpAmb>1</tpAmb>"
+        f"<dhEmi>{issued_on.isoformat()}T10:00:00-03:00</dhEmi>"
+        "<verAplic>SINTETICO</verAplic><serie>1</serie><nDPS>1</nDPS>"
+        f"<dCompet>{issued_on.isoformat()}</dCompet><tpEmit>1</tpEmit><cLocEmi>3550308</cLocEmi>"
+        f"{subst}"
+        f"<prest>{_party_doc(prestador_cnpj)}"
+        "<regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib></prest>"
+        f"{toma}"
+        "<serv><locPrest><cLocPrestacao>3550308</cLocPrestacao></locPrest>"
+        "<cServ><cTribNac>010203</cTribNac>"
+        "<xDescServ>SERVICOS DE INFORMATICA</xDescServ></cServ></serv>"
         f"<valores><vServPrest><vServ>{_money(service_cents)}</vServ></vServPrest>"
-        f"<trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>{2 if retained else 1}</tpRetISSQN>"
-        f"</tribMun>{trib_fed}</trib></valores>"
-        "</infDPS></DPS></infNFSe></NFSe>"
+        f"<trib><tribMun><tribISSQN>1</tribISSQN>"
+        f"<tpRetISSQN>{2 if retained else 1}</tpRetISSQN></tribMun>"
+        f"{trib_fed}<totTrib><indTotTrib>0</indTotTrib></totTrib></trib></valores>"
+        "</infDPS></DPS></infNFSe>"
+        f"{_signature(nfse_id)}"
+        "</NFSe>"
     )
     return xml.encode("utf-8")
 
