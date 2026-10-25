@@ -26,6 +26,7 @@ from conciliador_core import (
 from conciliador_core.engine.reconciliation import LedgerLine
 from conciliador_core.models import Direction, Source
 from conciliador_ui import vocab
+from django.db.models import Max
 
 from . import models
 
@@ -235,21 +236,37 @@ def unlink_group(link: models.Link) -> int:
     return conta_id
 
 
-def reconcile(company: models.Company, account: models.BankAccount | None = None) -> dict:
-    """Contexto completo do painel para uma empresa (e, se dada, uma conta)."""
+def reconcile(
+    company: models.Company,
+    account: models.BankAccount | None = None,
+    period: models.Period | None = None,
+) -> dict:
+    """Contexto completo do painel para uma empresa (e, se dadas, uma conta e um período)."""
     qs = models.BankTransaction.objects.filter(account__company=company)
     if account is not None:
         qs = qs.filter(account=account)
+    if period is not None:
+        qs = qs.filter(posted_on__gte=period.start, posted_on__lte=period.end)
     txns = list(qs.select_related("account").order_by("posted_on", "id"))
     items = list(models.ExpectedItem.objects.filter(company=company).order_by("due_on", "id"))
-    links = list(
-        models.Link.objects.filter(company=company, transaction__in=txns).select_related(
+
+    # Vínculos: os do período entram na conciliação; os demais só servem para não
+    # oferecer de novo um item que já foi baixado em outro mês.
+    all_links = list(
+        models.Link.objects.filter(company=company).select_related(
             "transaction", "item", "transaction__account"
         )
     )
+    tx_ids = {t.pk for t in txns}
+    links = [
+        ln
+        for group in _connected_links(all_links)
+        if all(ln.transaction_id in tx_ids for ln in group)
+        for ln in group
+    ]
 
-    linked_tx_ids = {ln.transaction_id for ln in links}
-    linked_item_ids = {ln.item_id for ln in links}
+    linked_tx_ids = {ln.transaction_id for ln in all_links}
+    linked_item_ids = {ln.item_id for ln in all_links}
 
     # Partição dos lançamentos do extrato.
     classified = [t for t in txns if t.is_classified and t.classification != "transferencia"]
@@ -527,7 +544,17 @@ def reconcile(company: models.Company, account: models.BankAccount | None = None
 
     recon.sort(key=lambda r: ORDER.index(r["status"]) if r["status"] in ORDER else 99)
 
-    balance = _balance(txns, account, links, classified)
+    balance = _balance(
+        txns,
+        links,
+        classified,
+        opening_cents=(
+            period.opening_balance_cents
+            if period is not None
+            else (account.opening_balance_cents if account else None)
+        ),
+        statement_closing_cents=_statement_closing(account, period),
+    )
     totals = _totals(recon)
     counts = {
         "a_confirmar": sum(1 for r in recon if r["status"] == "a_confirmar"),
@@ -545,11 +572,35 @@ def reconcile(company: models.Company, account: models.BankAccount | None = None
     }
 
 
+def _statement_closing(
+    account: models.BankAccount | None, period: models.Period | None
+) -> int | None:
+    """Saldo final do extrato **do período**.
+
+    O ``LEDGERBAL`` do arquivo é o saldo final do extrato inteiro: só serve para o período
+    quando o período alcança o último lançamento importado. Para um mês passado, o saldo do
+    banco é o que foi gravado no fechamento — nunca o saldo de hoje.
+    """
+    if account is None:
+        return None
+    if period is None:
+        return account.ledger_balance_cents
+    if period.closing_balance_cents is not None:
+        return period.closing_balance_cents
+    last = models.BankTransaction.objects.filter(account=account).aggregate(last=Max("posted_on"))[
+        "last"
+    ]
+    if last is None or last <= period.end:
+        return account.ledger_balance_cents
+    return None
+
+
 def _balance(
     txns: list[models.BankTransaction],
-    account: models.BankAccount | None,
     links: list[models.Link],
     classified: list[models.BankTransaction],
+    opening_cents: int | None,
+    statement_closing_cents: int | None,
 ) -> dict:
     """Conciliação bancária de saldo: extrato × razão derivada dos documentos."""
     statement_inflows = sum(t.amount_cents for t in txns if t.amount_cents > 0)
@@ -588,10 +639,10 @@ def _balance(
     n_unexplained = sum(1 for t in txns if t.pk not in explained_pks)
 
     res = reconcile_balances(
-        opening_cents=account.opening_balance_cents if account else None,
+        opening_cents=opening_cents,
         statement_inflows=statement_inflows,
         statement_outflows=statement_outflows,
-        statement_closing_cents=account.ledger_balance_cents if account else None,
+        statement_closing_cents=statement_closing_cents,
         ledger_lines=ledger_lines,
         value_gap_cents=value_gap_cents,
         unexplained_cents=unexplained_cents,

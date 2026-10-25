@@ -6,12 +6,17 @@ Mutações (confirmar/recusar/desfazer) gravam vínculos e respondem com ``HX-Re
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from accounts.models import Role
 from accounts.views import resolve_company
+from conciliador_core import ParseError
+from conciliador_core.money import parse_brl_amount
 from conciliador_ui.landing_context import landing_context
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 
 from . import ingest, models, services
 
@@ -65,30 +70,72 @@ def _conta(
     return (contas[0] if contas else None), contas
 
 
-def _periodo(conta: models.BankAccount | None) -> dict:
-    from django.db.models import Max, Min
-
+def _resolve_period(request: HttpRequest, conta: models.BankAccount | None) -> models.Period | None:
+    """Período ativo: o escolhido em ``?periodo=`` ou o último aberto da conta."""
     if conta is None:
-        return {"slug": "atual", "label": "Período atual", "start": None, "end": None}
-    agg = models.BankTransaction.objects.filter(account=conta).aggregate(
-        first=Min("posted_on"), last=Max("posted_on")
-    )
-    return {"slug": "atual", "label": "Período atual", "start": agg["first"], "end": agg["last"]}
+        return None
+    qs = models.Period.objects.filter(account=conta)
+    wanted = request.GET.get("periodo")
+    if wanted and wanted != "atual":
+        return qs.filter(pk=wanted).first()
+    return qs.filter(closed=False).order_by("-start").first()
+
+
+def _periodo_dict(period: models.Period | None, conta: models.BankAccount | None) -> dict:
+    if period is not None:
+        return {
+            "slug": str(period.pk),
+            "label": period.label,
+            "start": period.start,
+            "end": period.end,
+            "id": period.pk,
+            "closed": period.closed,
+            "opening": period.opening_balance_cents,
+            "closing": period.closing_balance_cents,
+        }
+    return {"slug": "atual", "label": "Período atual", "start": None, "end": None, "closed": False}
+
+
+def _periodos_list(conta: models.BankAccount | None) -> list[dict]:
+    if conta is None:
+        return [{"slug": "atual", "label": "Período atual"}]
+    out = [
+        {"slug": str(p.pk), "label": p.label, "closed": p.closed}
+        for p in models.Period.objects.filter(account=conta).order_by("-start")
+    ]
+    return out or [{"slug": "atual", "label": "Período atual"}]
+
+
+def _abertura_sugerida(conta: models.BankAccount | None) -> int | None:
+    """Abertura sugerida para o próximo período: o fechamento anterior, ou o saldo do extrato."""
+    if conta is None:
+        return None
+    prev = models.Period.objects.filter(account=conta, closed=True).order_by("-end").first()
+    if prev is not None and prev.closing_balance_cents is not None:
+        return prev.closing_balance_cents
+    return conta.ledger_balance_cents
+
+
+def _abertura_txt(cents: int | None) -> str:
+    return "" if cents is None else f"{cents // 100},{cents % 100:02d}"
 
 
 def _base(request: HttpRequest, nav: str) -> tuple[dict, models.Company]:
     company = _company_of(request)
     view = "contador" if _role_of(request) == Role.ACCOUNTANT else "dono"
     conta, contas = _conta(request, company)
-    ctx = services.reconcile(company, conta)
-    periodo = _periodo(conta)
+    period = _resolve_period(request, conta)
+    ctx = services.reconcile(company, conta, period)
     ctx.update(
         {
             "org": {"name": company.name, "cnpj": company.cnpj},
             "conta": {"id": conta.pk, "label": conta.label} if conta else None,
             "contas": [{"id": c.pk, "label": c.label} for c in contas],
-            "periodo": periodo,
-            "periodos": [periodo],
+            "periodo": _periodo_dict(period, conta),
+            "periodos": _periodos_list(conta),
+            "period": period,
+            "abertura_sugerida": _abertura_sugerida(conta),
+            "abertura_sugerida_txt": _abertura_txt(_abertura_sugerida(conta)),
             "view": view,
             "nav": nav,
             "conta_id": conta.pk if conta else None,
@@ -408,6 +455,51 @@ def aprovar_lote(request: HttpRequest):
             continue
         _confirm(company, item, who=who)
     return HttpResponse(headers={"HX-Redirect": _back(conta.pk if conta else None)})
+
+
+@login_required
+@_dono_required
+def abrir_periodo(request: HttpRequest):
+    """Abre o fechamento de um mês com o saldo inicial informado."""
+    company = _company_of(request)
+    conta, _ = _conta(request, company)
+    if conta is None:
+        return HttpResponse(status=404)
+    try:
+        opening = parse_brl_amount(request.POST.get("opening", "0"))
+    except ParseError:
+        return HttpResponse(status=400)
+    month = (request.POST.get("month") or timezone.localdate().strftime("%Y-%m")).strip()
+    try:
+        start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return HttpResponse(status=400)
+    end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    if models.Period.objects.filter(account=conta, start__lte=end, end__gte=start).exists():
+        return HttpResponse(status=409)
+    models.Period.objects.create(account=conta, start=start, end=end, opening_balance_cents=opening)
+    return HttpResponse(headers={"HX-Redirect": _back(conta.pk)})
+
+
+@login_required
+@_dono_required
+def fechar_periodo(request: HttpRequest):
+    """Fecha o período em aberto, gravando o saldo final do extrato."""
+    company = _company_of(request)
+    conta, _ = _conta(request, company)
+    period = models.Period.objects.filter(account=conta, closed=False).order_by("-start").first()
+    if period is None:
+        return HttpResponse(status=404)
+    balance = services.reconcile(company, conta, period)["balance"]
+    closing = balance["statement_closing"]
+    if closing is None and balance["opening"] is not None:
+        # sem LEDGERBAL do mês, o saldo final é a abertura mais o movimento do período
+        closing = balance["opening"] + balance["statement_inflows"] - balance["statement_outflows"]
+    period.closing_balance_cents = closing
+    period.closed = True
+    period.closed_at = timezone.now()
+    period.save()
+    return HttpResponse(headers={"HX-Redirect": _back(conta.pk)})
 
 
 @login_required

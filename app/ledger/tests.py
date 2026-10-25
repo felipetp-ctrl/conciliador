@@ -579,6 +579,141 @@ class HealthTests(TestCase):
             self.assertEqual(resp.json(), {"status": "ok"})
 
 
+class PeriodTests(TestCase):
+    def test_period_opening_flows_into_balance(self):
+        company = _company()
+        account = _account(company)
+        account.ledger_balance_cents = 150000
+        account.save()
+        _tx(account, 50000, "PIX", date(2026, 1, 1), key="k1")
+        period = models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=100000,
+        )
+
+        balance = services.reconcile(company, account, period)["balance"]
+        self.assertEqual(balance["opening"], 100000)
+        self.assertTrue(balance["statement_consistent"])
+
+        # sem período, cai para o saldo da conta (None aqui)
+        balance2 = services.reconcile(company, account)["balance"]
+        self.assertIsNone(balance2["opening"])
+
+    def test_abrir_periodo_creates_open_period(self):
+        company = _company()
+        account = _account(company)
+        _login(self.client, company)
+
+        resp = self.client.post(f"/abrir-periodo/?conta={account.pk}", {"opening": "1.000,00"})
+        self.assertEqual(resp.status_code, 200)
+        period = models.Period.objects.get(account=account)
+        self.assertEqual(period.opening_balance_cents, 100000)
+        self.assertFalse(period.closed)
+
+    def test_fechar_periodo_records_closing(self):
+        company = _company()
+        account = _account(company)
+        account.ledger_balance_cents = 99900
+        account.save()
+        _login(self.client, company)
+        period = models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+        )
+
+        resp = self.client.post(f"/fechar-periodo/?conta={account.pk}")
+        self.assertEqual(resp.status_code, 200)
+        period.refresh_from_db()
+        self.assertTrue(period.closed)
+        self.assertEqual(period.closing_balance_cents, 99900)
+
+    def test_abertura_sugerida_herda_fechamento(self):
+        company = _company()
+        account = _account(company)
+        _login(self.client, company)
+        models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+            closing_balance_cents=12345,
+            closed=True,
+        )
+        html = self.client.get("/fechamento/atual/").content.decode()
+        self.assertIn("123,45", html)  # abertura sugerida = fechamento anterior
+
+    def test_period_filters_transactions_outside_the_month(self):
+        company = _company()
+        account = _account(company)
+        _tx(account, 10000, "PIX JAN", date(2026, 1, 10), key="jan")
+        _tx(account, 20000, "PIX FEV", date(2026, 2, 10), key="fev")
+        period = models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+        )
+
+        ctx = services.reconcile(company, account, period)
+        self.assertEqual(ctx["balance"]["statement_inflows"], 10000)
+        # há lançamento depois do período: o LEDGERBAL do arquivo não é o saldo de janeiro
+        self.assertIsNone(ctx["balance"]["statement_closing"])
+
+    def test_closed_period_uses_recorded_closing(self):
+        company = _company()
+        account = _account(company)
+        _tx(account, 10000, "PIX JAN", date(2026, 1, 10), key="jan")
+        _tx(account, 20000, "PIX FEV", date(2026, 2, 10), key="fev")
+        account.ledger_balance_cents = 30000
+        account.save()
+        period = models.Period.objects.create(
+            account=account,
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 31),
+            opening_balance_cents=0,
+            closing_balance_cents=10000,
+            closed=True,
+        )
+
+        balance = services.reconcile(company, account, period)["balance"]
+        self.assertEqual(balance["statement_closing"], 10000)
+        self.assertTrue(balance["statement_consistent"])
+
+    def test_abrir_periodo_uses_informed_month(self):
+        company = _company()
+        account = _account(company)
+        _login(self.client, company)
+
+        resp = self.client.post(
+            f"/abrir-periodo/?conta={account.pk}", {"opening": "0,00", "month": "2026-02"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        period = models.Period.objects.get(account=account)
+        self.assertEqual(period.start, date(2026, 2, 1))
+        self.assertEqual(period.end, date(2026, 2, 28))
+
+    def test_abrir_periodo_recusa_mes_sobreposto(self):
+        company = _company()
+        account = _account(company)
+        _login(self.client, company)
+        models.Period.objects.create(
+            account=account,
+            start=date(2026, 2, 1),
+            end=date(2026, 2, 28),
+            opening_balance_cents=0,
+        )
+
+        resp = self.client.post(
+            f"/abrir-periodo/?conta={account.pk}", {"opening": "0,00", "month": "2026-02"}
+        )
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(models.Period.objects.filter(account=account).count(), 1)
+
+
 class UploadTests(TestCase):
     def setUp(self):
         self.company = _company()

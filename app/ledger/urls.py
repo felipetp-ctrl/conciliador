@@ -29,6 +29,8 @@ urlpatterns = [
         "item/<str:item_id>/desclassificar/", views.item_desclassificar, name="item_desclassificar"
     ),
     path("aprovar-lote/", views.aprovar_lote, name="aprovar_lote"),
+    path("abrir-periodo/", views.abrir_periodo, name="abrir_periodo"),
+    path("fechar-periodo/", views.fechar_periodo, name="fechar_periodo"),
     path("vinculo-manual/", views.vinculo_manual, name="vinculo_manual"),
     path("importacao/", views.importacao, name="importacao"),
     path("importacao/enviar/<str:kind>/", views.importacao_enviar, name="importacao_enviar"),

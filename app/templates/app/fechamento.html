@@ -14,6 +14,18 @@
   </div>
 </header>
 
+{% if view == 'dono' and not period %}
+<form class="row" style="margin:0 0 20px;align-items:flex-end;gap:10px" hx-post="{% url 'abrir_periodo' %}?conta={{ conta.id }}" hx-target="body">
+  {% csrf_token %}
+  <div class="field" style="margin:0"><label class="field__label" for="mes">Mês</label><input class="field__input" id="mes" name="month" type="month" value="{% now 'Y-m' %}" style="width:160px"></div>
+  <div class="field" style="margin:0"><label class="field__label" for="abertura">Saldo inicial do mês</label><input class="field__input" id="abertura" name="opening" inputmode="decimal" placeholder="ex.: 232,23" value="{{ abertura_sugerida_txt }}" style="width:180px"></div>
+  <button class="btn btn--primary" type="submit">{% icon "arrow-right" 16 %}Abrir período</button>
+  <span class="faint" style="font-size:12.5px">Sem saldo inicial, o fechamento não confere contra o banco.</span>
+</form>
+{% elif view == 'dono' and not periodo.closed %}
+<div class="row" style="margin:0 0 20px"><span class="faint" style="font-size:13px">Período {{ periodo.label }} em aberto · saldo inicial {{ periodo.opening|brl:"never,sm,muted" }}.</span><button class="btn btn--sm btn--ghost" hx-post="{% url 'fechar_periodo' %}?conta={{ conta.id }}" hx-target="body" hx-confirm="Fechar {{ periodo.label }}? O saldo final é gravado.">{% icon "lock" 14 %}Fechar período</button></div>
+{% endif %}
+
 {# Totais: recarregam sozinhos quando uma linha muda (o servidor responde com HX-Trigger: totais) #}
 <div id="totais" hx-get="{% url 'fechamento_totais' periodo.slug %}" hx-trigger="totais from:body" hx-swap="outerHTML">
   {% include "app/_totais.html" %}

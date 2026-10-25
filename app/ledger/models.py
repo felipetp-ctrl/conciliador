@@ -134,6 +134,31 @@ class RejectedLink(models.Model):
         ]
 
 
+class Period(models.Model):
+    """Fechamento mensal de uma conta: saldo inicial → movimentações → saldo final."""
+
+    account = models.ForeignKey(BankAccount, on_delete=models.CASCADE, related_name="periods")
+    start = models.DateField()
+    end = models.DateField()
+    opening_balance_cents = models.IntegerField(null=True, blank=True)
+    closing_balance_cents = models.IntegerField(null=True, blank=True)
+    closed = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["start"]
+        constraints = [
+            models.UniqueConstraint(fields=["account", "start", "end"], name="uniq_periodo"),
+        ]
+
+    @property
+    def label(self) -> str:
+        return f"{self.start:%m/%Y}"
+
+    def __str__(self) -> str:
+        return f"{self.account_id} {self.start:%Y-%m}"
+
+
 class ImportJob(models.Model):
     """Um arquivo enviado pelo dono, com o resultado do processamento."""
 
