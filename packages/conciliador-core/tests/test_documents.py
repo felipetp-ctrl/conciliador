@@ -55,3 +55,7 @@ def test_find_documents_empty() -> None:
 def test_mask_cpf() -> None:
     assert mask_cpf("52998224725") == "***.982.247-**"
     assert mask_cpf("529.982.247-25") == "***.982.247-**"
+
+
+def test_find_documents_deduplicates() -> None:
+    assert find_documents("529.982.247-25/529.982.247-25 52998224725") == ("52998224725",)

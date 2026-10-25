@@ -1,11 +1,11 @@
 """Interpretação de valores monetários em reais, sempre em centavos inteiros."""
 
 import re
-from decimal import Decimal
 
 from conciliador_core.errors import ParseError
 
 _CHARS = re.compile(r"[0-9.,]+")
+_MAX_INTEGER_DIGITS = 15
 
 
 def _invalid(text: str) -> ParseError:
@@ -51,5 +51,7 @@ def parse_brl_amount(text: str) -> int:
     if not integer or not integer.isdigit():
         raise _invalid(text)
 
-    cents = int(Decimal(f"{integer}.{decimals or '0'}") * 100)
+    if len(integer) > _MAX_INTEGER_DIGITS:
+        raise _invalid(text)
+    cents = int(integer) * 100 + int(decimals.ljust(2, "0") or "0")
     return -cents if negative else cents

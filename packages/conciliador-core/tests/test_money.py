@@ -35,3 +35,22 @@ def test_parse_error_str() -> None:
     err = ParseError("too_large", "Arquivo grande demais.")
     assert err.code == "too_large"
     assert str(err) == "Arquivo grande demais."
+
+
+def test_parse_brl_amount_rejects_huge() -> None:
+    with pytest.raises(ParseError) as e:
+        parse_brl_amount("1" * 30 + ",99")
+    assert e.value.code == "invalid_amount"
+
+
+def test_parse_brl_amount_max_digits_exact() -> None:
+    assert parse_brl_amount("9" * 15 + ",99") == int("9" * 15 + "99")
+    with pytest.raises(ParseError):
+        parse_brl_amount("1" * 16)
+
+
+def test_parse_error_pickles() -> None:
+    import pickle
+
+    err = pickle.loads(pickle.dumps(ParseError("too_large", "Grande.")))  # noqa: S301
+    assert (err.code, err.message, str(err)) == ("too_large", "Grande.", "Grande.")
