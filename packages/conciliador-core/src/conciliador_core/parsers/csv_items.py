@@ -20,7 +20,7 @@ MAX_ROWS = 10_000
 _REQUIRED = ("tipo", "valor", "vencimento")
 _OPTIONAL = ("contraparte_nome", "contraparte_documento", "documento_numero", "descricao")
 _KNOWN = _REQUIRED + _OPTIONAL
-_DATE = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
+_DATE = re.compile(r"([0-9]{2})/([0-9]{2})/([0-9]{4})", re.ASCII)
 _CURRENCY = re.compile(r"R\$\s*", re.IGNORECASE)
 _NEWLINE = re.compile(r"\r\n|\r|\n")
 _DIRECTIONS = {"receber": Direction.INFLOW, "pagar": Direction.OUTFLOW}
@@ -56,8 +56,11 @@ def _parse_due(text: str) -> date | None:
     m = _DATE.fullmatch(text)
     if not m:
         return None
+    year = int(m.group(3))
+    if not 2000 <= year <= 2099:
+        return None
     try:
-        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        return date(year, int(m.group(2)), int(m.group(1)))
     except ValueError:
         return None
 
@@ -106,6 +109,23 @@ def _build_item(cells: dict[str, str]) -> ExpectedItem | str:
     )
 
 
+def _read_header(record: list[str]) -> dict[str, int]:
+    columns: dict[str, int] = {}
+    for idx, raw in enumerate(record):
+        name = _normalize_header(raw)
+        if name not in _KNOWN:
+            continue
+        if name in columns:
+            raise ParseError("invalid_format", f"Cabeçalho do CSV com a coluna repetida: {name}.")
+        columns[name] = idx
+    missing = [c for c in _REQUIRED if c not in columns]
+    if missing:
+        raise ParseError(
+            "invalid_format", f"Cabeçalho do CSV sem coluna obrigatória: {', '.join(missing)}."
+        )
+    return columns
+
+
 def parse_items_csv(data: bytes) -> CsvParseResult:
     """Lê um CSV de contas a pagar/receber. Linhas inválidas vão para ``errors``."""
     if len(data) > MAX_FILE_BYTES:
@@ -116,7 +136,7 @@ def parse_items_csv(data: bytes) -> CsvParseResult:
         return CsvParseResult((), ())
     delimiter = ";" if first_line.count(";") >= first_line.count(",") else ","
 
-    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter)
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
     items: list[ExpectedItem] = []
     errors: list[RowError] = []
     seen: set[str] = set()
@@ -135,6 +155,9 @@ def parse_items_csv(data: bytes) -> CsvParseResult:
             rows += 1
             if rows > MAX_ROWS:
                 raise ParseError("too_large", f"CSV com mais de {MAX_ROWS} linhas de dados.")
+            if any("\n" in c or "\r" in c for c in record):
+                errors.append(RowError(line, "campo com quebra de linha — verifique aspas"))
+                continue
             cells = {
                 name: record[idx].strip() if idx is not None and idx < len(record) else ""
                 for name, idx in ((n, columns.get(n)) for n in _KNOWN)
@@ -150,23 +173,6 @@ def parse_items_csv(data: bytes) -> CsvParseResult:
     except csv.Error as exc:
         raise ParseError("invalid_format", f"CSV malformado: {exc}") from exc
     return CsvParseResult(tuple(items), tuple(errors))
-
-
-def _read_header(record: list[str]) -> dict[str, int]:
-    columns: dict[str, int] = {}
-    for idx, raw in enumerate(record):
-        name = _normalize_header(raw)
-        if name not in _KNOWN:
-            continue
-        if name in columns:
-            raise ParseError("invalid_format", f"Cabeçalho do CSV com a coluna repetida: {name}.")
-        columns[name] = idx
-    missing = [c for c in _REQUIRED if c not in columns]
-    if missing:
-        raise ParseError(
-            "invalid_format", f"Cabeçalho do CSV sem coluna obrigatória: {', '.join(missing)}."
-        )
-    return columns
 
 
 def template_csv() -> bytes:

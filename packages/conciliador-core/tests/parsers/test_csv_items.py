@@ -137,3 +137,55 @@ def test_template_parses_cleanly():
     assert r.errors == ()
     assert {i.direction for i in r.items} == {Direction.INFLOW, Direction.OUTFLOW}
     assert len(r.items) == 2
+
+
+def test_unterminated_quote_never_swallows_rows():
+    raw = (
+        b"tipo;valor;vencimento;contraparte_nome\n"
+        b'receber;1,00;01/01/2027;"Ana\npagar;2,00;01/01/2027;x\n'
+    )
+    try:
+        r = parse_items_csv(raw)
+    except ParseError as exc:
+        assert exc.code == "invalid_format"
+        return
+    assert r.items == ()
+    assert r.errors
+
+
+def test_unterminated_quote_closed_by_later_quote_is_row_error():
+    raw = (
+        b"tipo;valor;vencimento;contraparte_nome\n"
+        b'receber;1,00;01/01/2027;"Ana\npagar;2,00;01/01/2027;x";\n'
+        b"pagar;3,00;01/01/2027;y\n"
+    )
+    r = parse_items_csv(raw)
+    assert all(i.counterpart_name != "Ana\npagar" for i in r.items)
+    assert [i.amount_cents for i in r.items] == [300]
+    assert [e.line for e in r.errors] == [2]
+
+
+def test_quoted_newline_is_row_error_and_next_line_correct():
+    raw = (
+        b"tipo;valor;vencimento;contraparte_nome\n"
+        b'receber;1,00;01/01/2027;"Ana\nSilva"\n'
+        b"pagar;2,00;01/01/2027;x\n"
+        b"pagar;abc;01/01/2027;x\n"
+    )
+    r = parse_items_csv(raw)
+    assert [(e.line, e.message) for e in r.errors] == [
+        (2, "campo com quebra de linha — verifique aspas"),
+        (5, "valor inválido"),
+    ]
+    assert [i.amount_cents for i in r.items] == [200]
+
+
+@pytest.mark.parametrize("due", ["٠١/٠١/٢٠٢٧", "01/01/1999", "01/01/2100"])
+def test_date_non_ascii_digits_and_year_range_rejected(due):
+    r = parse_items_csv(f"tipo;valor;vencimento\nreceber;1,00;{due}\n".encode())
+    assert [e.message for e in r.errors] == ["vencimento inválido: use DD/MM/AAAA"]
+
+
+def test_thousands_dot_without_decimals_is_reais():
+    r = parse_items_csv(b"tipo;valor;vencimento\nreceber;1.500;01/01/2027\n")
+    assert r.items[0].amount_cents == 150000
