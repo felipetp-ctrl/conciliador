@@ -54,15 +54,38 @@ class SuggestionProvider(Protocol):
 _BASE_SCORE = {Rule.DOCUMENT: 300, Rule.NUMBER: 200, Rule.UNIQUE: 100}
 _STRENGTH = (Rule.DOCUMENT, Rule.NUMBER, Rule.UNIQUE)
 _DIGITS = re.compile(r"[0-9]+")
-# Datas no histórico (dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd, mm/aaaa, dd/mm): seus dígitos
-# nunca são nº de documento ("REF 10/2026" não cita a nota nº 10).
+# Datas no histórico (dd/mm/aaaa, dd-mm-aaaa, dd.mm.aaaa, aaaa-mm-dd, mm/aaaa, dd/mm e as
+# variantes com ponto ou hífen): seus dígitos nunca são nº de documento ("REF 10/2026" não
+# cita a nota nº 10, e "15.10.2026" também não).
 _DATE = re.compile(
     r"(?<![0-9])(?:"
-    r"[0-9]{1,2}([/-])[0-9]{1,2}\1[0-9]{4}"
+    r"[0-9]{1,2}([/\-.])[0-9]{1,2}\1[0-9]{4}"
     r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}"
-    r"|[0-9]{1,2}/[0-9]{4}"
-    r"|[0-9]{1,2}/[0-9]{1,2}"
+    r"|[0-9]{1,2}[/\-.][0-9]{4}"
+    r"|[0-9]{1,2}[/\-.][0-9]{1,2}"
     r")(?![0-9])"
+)
+# Valores monetários ("R$ 500,00", "US$ 1.234,56", "$ 100" ou um decimal com vírgula):
+# seus dígitos nunca são nº de documento.
+_MONEY = re.compile(
+    r"(?<![0-9A-Za-z])(?:"
+    r"(?:R\$\s*|US\$\s*|U\$\s*|RS\$\s*|\$\s*)[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?"
+    r"|[0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}"
+    r")(?![0-9])"
+)
+# Pedaços de CPF/CNPJ mascarado ("***.982.247-**"): dígitos vizinhos de '*' são da máscara.
+_MASKED = re.compile(r"\*[./\-]*[0-9]+|[0-9]+[./\-]*\*")
+_MONTHS = (
+    r"JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ"
+    r"|JANEIRO|FEVEREIRO|MAR(?:ÇO|CO)|ABRIL|MAIO|JUNHO|JULHO"
+    r"|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO"
+)
+_REFWORDS = r"REF|COMPET|COMPET(?:ÊNCIA|ENCIA)|ANO|EXERC|EXERC(?:ÍCIO|ICIO)|VENC|VENCIMENTO"
+# Ano "solto" citado após um mês ou palavra de referência ("OUT/2026", "REF 2026"): o ano
+# (grupo 1) nunca é nº de documento.
+_YEAR = re.compile(
+    rf"\b(?:{_MONTHS}|{_REFWORDS})\b\s*[/\-.]?\s*([0-9]{{4}})(?![0-9])",
+    re.IGNORECASE,
 )
 _MIN_NUMBER_DIGITS = 3
 
@@ -112,9 +135,13 @@ def _number_key(number: str | None) -> str | None:
 
 def _memo_numbers(memo: str) -> frozenset[str]:
     """Sequências máximas de dígitos ASCII do histórico, sem zeros à esquerda, exceto as que
-    fazem parte de uma data ou de um CPF/CNPJ válido."""
+    fazem parte de uma data, de um CPF/CNPJ (válido ou mascarado), de um valor monetário ou
+    de um ano "solto" citado após um mês/palavra de referência ("OUT/2026")."""
     blocked = [m.span() for m in _DATE.finditer(memo)]
     blocked += [(start, end) for start, end, _ in document_spans(memo)]
+    blocked += [m.span() for m in _MONEY.finditer(memo)]
+    blocked += [m.span() for m in _MASKED.finditer(memo)]
+    blocked += [m.span(1) for m in _YEAR.finditer(memo)]
     tokens: set[str] = set()
     for match in _DIGITS.finditer(memo):
         start, end = match.span()

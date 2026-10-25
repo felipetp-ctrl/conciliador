@@ -296,6 +296,35 @@ def test_number_next_to_a_date_still_counts():
     assert [(x.item_id, x.rule) for x in s] == [("a", Rule.NUMBER)]
 
 
+@pytest.mark.parametrize(
+    ("memo", "numbers"),
+    [
+        ("REF OUT/2026", ["2026"]),  # ano solto após nome de mês
+        ("COMPET OUTUBRO 2026", ["2026"]),  # idem, mês por extenso
+        ("PIX R$ 500,00 GAMA", ["500"]),  # valor com símbolo
+        ("TOTAL 1.234,56", ["234"]),  # valor com milhar e vírgula
+        ("PIX ***.982.247-** X", ["982", "247"]),  # pedaços de CPF mascarado
+        ("PAG 15.10.2026 NF", ["2026"]),  # data com ponto
+    ],
+)
+def test_year_amount_mask_and_dotted_date_are_not_numbers(memo, numbers):
+    items = [item(f"i{n}", 15, 1000, number=n) for n in numbers]
+    # Distratores mantêm a regra UNIQUE sem candidato único: se o nº vazasse, viraria
+    # NUMBER primário e quebraria a asserção.
+    items += [item(f"d{n}", 15, 1000, number=n) for n in ("77777", "88888", "99999")]
+    s = suggest([tx(15, 1000, memo=memo)], items)
+    assert all(x.rule is Rule.AMBIGUOUS for x in s) and len(s) == len(items)
+
+
+def test_number_next_to_a_year_still_counts():
+    # "4321" é o nº da nota; "2026" (ano, em "OUT/2026") não vira token.
+    s = suggest(
+        [tx(15, 1000, memo="NF 4321 REF OUT/2026")],
+        [item("a", 15, 1000, number="4321"), item("b", 15, 1000, number="2026")],
+    )
+    assert [(x.item_id, x.rule) for x in s] == [("a", Rule.NUMBER)]
+
+
 def test_probable_duplicates_stay_matchable_by_document():
     # NF-e e planilha do mesmo título: duplicata provável não resolvida. Sem excluí-la,
     # o lançamento com o CPF/CNPJ continua indo para a NF-e pela regra DOCUMENT.
