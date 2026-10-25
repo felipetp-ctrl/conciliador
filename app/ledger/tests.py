@@ -674,6 +674,7 @@ class PeriodTests(TestCase):
         )
         html = self.client.get("/fechamento/atual/").content.decode()
         self.assertIn("123,45", html)  # abertura sugerida = fechamento anterior
+        self.assertIn('name="month"', html)  # o mês é escolhido ao abrir o período
 
     def test_period_filters_transactions_outside_the_month(self):
         company = _company()
@@ -882,6 +883,37 @@ class AccountsTests(TestCase):
         html = ca.get("/fechamento/atual/").content.decode()
         self.assertIn("PIX DA EMPRESA A", html)
         self.assertNotIn("PIX DA EMPRESA B", html)
+
+
+class AuthDesignTests(TestCase):
+    """As telas de acesso usam a casca em duas colunas e carregam os assets certos."""
+
+    def test_login_and_signup_use_split_layout(self):
+        for url in ("/entrar/", "/comecar/"):
+            resp = self.client.get(url)
+            self.assertContains(resp, "auth-split")
+            self.assertContains(resp, "ds/auth.css")
+            self.assertContains(resp, "js/auth.js")
+
+    def test_mfa_page_uses_split_layout(self):
+        import pyotp
+
+        company = _company()
+        user = _user(company)
+        user.mfa_secret = pyotp.random_base32()
+        user.save(update_fields=["mfa_secret"])
+        self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+
+        resp = self.client.get("/entrar/mfa/")
+        self.assertContains(resp, "auth-split")
+        self.assertContains(resp, "Verificação em duas etapas")
+
+    def test_post_login_pages_render(self):
+        company = _company()
+        user = _user(company)
+        self.client.force_login(user)
+        for url in ("/empresa/", "/convites/", "/seguranca/mfa/"):
+            self.assertEqual(self.client.get(url).status_code, 200)
 
 
 class ExportTests(TestCase):
