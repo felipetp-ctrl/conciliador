@@ -189,12 +189,15 @@ def test_safe_parse_xml_returns_element():
         b"not xml",
         b"<a>",
         b"\xff\xfe\x00",
-        b"<a/>",
         b'<?xml version="1.0" encoding="foo"?><a/>',
     ],
 )
 def test_garbage_is_invalid_format(data):
     assert _code(data) == "invalid_format"
+
+
+def test_unknown_root_is_unsupported_document():
+    assert _code(b"<a/>") == "unsupported_document"
 
 
 def _mutate(old: bytes, new: bytes) -> bytes:

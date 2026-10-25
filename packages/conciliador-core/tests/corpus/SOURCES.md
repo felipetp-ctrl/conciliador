@@ -61,3 +61,24 @@ seja, aceita CNPJ alfanumérico), `ide/nNF`, `ide/dhEmi`, `emit/CNPJ|CPF`, `dest
 `total/ICMSTot/vNF`, `total/retTrib/{vRetPIS,vRetCOFINS,vRetCSLL,vIRRF,vRetPrev}`,
 `cobr/dup/{nDup,dVenc,vDup}`; evento: `procEventoNFe/evento/infEvento/{chNFe,tpEvento}` e
 `retEvento/infEvento/cStat`.
+
+# Corpus fiscal (NFS-e padrão nacional)
+
+Nenhum XML de NFS-e foi incluído: a cobertura vem do gerador sintético
+`conciliador_synth.fiscal` (`make_nfse`, `make_nfse_cancellation`).
+
+## XSD oficial (somente conferência manual, não versionado)
+
+Leiaute 1.01 da NFS-e nacional (portal gov.br/nfse, "Documentação Atual"), consultado em
+2026-10-24 pelo espelho `akretion/nfelib` (`nfelib/nfse/schemas/v1_0/`, MIT): `NFSe_v1.01.xsd`,
+`tiposComplexos_v1.01.xsd`, `tiposSimples_v1.01.xsd`, `evento_v1.01.xsd`, `pedRegEvento_v1.01.xsd`,
+`tiposEventos_v1.01.xsd`; exemplo `nfelib/nfse/samples/v1_0/nfse-ibscbs.xml` (apenas lido; usa
+CNPJ zerado, mas não foi copiado). Caminhos confirmados (namespace `http://www.sped.fazenda.gov.br/nfse`):
+`NFSe/infNFSe/@Id` (`NFS` + 50 dígitos, `TSChaveNFSe` `[0-9]{50}`), `infNFSe/nNFSe`,
+`infNFSe/valores/{vISSQN,vTotalRet,vLiq}` (`vLiq` obrigatório), **`infNFSe/DPS/infDPS`** (o DPS fica
+dentro do `infNFSe`), `infDPS/{dhEmi,prest/CNPJ|CPF,toma/CNPJ|CPF}`, `infDPS/valores/vServPrest/vServ`,
+`infDPS/valores/trib/tribMun/tpRetISSQN` (1 não retido, 2 tomador, 3 intermediário),
+`infDPS/valores/trib/tribFed/{vRetCP,vRetIRRF,vRetCSLL}`; evento: raiz `evento/infEvento`
+(`verAplic, ambGer, nSeqEvento, dhProc, nDFSe`, `Id` `EVT`+50+6+3) com
+`pedRegEvento/infPedReg/{chNFSe, e101101}`; raiz `pedRegEvento` é só o pedido. O XSD 1.01 usa
+`TSCNPJ` `[0-9]{14}` (sem letras); o parser aceita CNPJ alfanumérico por exigência do projeto.
