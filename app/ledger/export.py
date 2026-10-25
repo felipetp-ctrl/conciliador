@@ -299,7 +299,7 @@ def _summary(pdf: FPDF, ctx: dict) -> None:
 
 
 def _table(pdf: FPDF, ctx: dict) -> None:
-    widths = (26, 17, 40, 32, 11, 17, 20, 19)
+    widths = (26, 17, 38, 32, 11, 17, 22, 19)
     headers = (
         "Situação",
         "Data",

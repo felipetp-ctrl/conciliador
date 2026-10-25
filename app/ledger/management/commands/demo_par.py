@@ -20,7 +20,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from ledger import ingest
-from ledger.models import BankAccount, Company, ExpectedItem
+from ledger.models import BankAccount, BankTransaction, Company, ExpectedItem
 
 DEMO_CNPJ = "11222333000181"
 BANK_ID = "001"
@@ -55,6 +55,18 @@ class Command(BaseCommand):
             today + timedelta(days=12),
             today - timedelta(days=25),
         )
+
+        # 0. Recomeça o extrato de demonstração (as datas mudam a cada dia; sem isto
+        #    rodar de novo duplicaria os lançamentos com os mesmos FITIDs).
+        demo_account = BankAccount.objects.filter(
+            company=company, bank_id=BANK_ID, branch=BRANCH, account_number=ACCOUNT
+        ).first()
+        if demo_account is not None:
+            BankTransaction.objects.filter(account=demo_account, fitid__startswith="demo-").delete()
+        # Os itens do CSV de demonstração usam sempre os mesmos números; recomeça.
+        ExpectedItem.objects.filter(
+            company=company, source="csv", document_number__in=("2002", "2003", "2004")
+        ).delete()
 
         # 1. Contas a pagar (CSV sintético) — o item "pago" casa com um débito do extrato.
         with tempfile.TemporaryDirectory() as tmp:
