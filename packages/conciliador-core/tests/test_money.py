@@ -1,6 +1,6 @@
 import pytest
 from conciliador_core.errors import ParseError
-from conciliador_core.money import parse_brl_amount
+from conciliador_core.money import parse_brl_amount, parse_ofx_amount
 
 
 @pytest.mark.parametrize(
@@ -54,3 +54,27 @@ def test_parse_error_pickles() -> None:
 
     err = pickle.loads(pickle.dumps(ParseError("too_large", "Grande.")))  # noqa: S301
     assert (err.code, err.message, str(err)) == ("too_large", "Grande.", "Grande.")
+
+
+@pytest.mark.parametrize(
+    ("text", "cents"),
+    [
+        ("10.500", 1050),
+        ("-1.000", -100),
+        ("1,23", 123),
+        ("-150.00", -15000),
+        ("+5", 500),
+        ("0.5", 50),
+    ],
+)
+def test_parse_ofx_amount_ok(text, cents):
+    assert parse_ofx_amount(text) == cents
+
+
+@pytest.mark.parametrize(
+    "text", ["1,234", "1.234,56", "", "-", "1.2.3", "abc", "5.", ".5", "1.005", "1" * 16, "1.2٣"]
+)
+def test_parse_ofx_amount_invalid(text):
+    with pytest.raises(ParseError) as e:
+        parse_ofx_amount(text)
+    assert e.value.code == "invalid_amount"

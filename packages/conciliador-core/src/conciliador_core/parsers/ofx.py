@@ -13,7 +13,7 @@ from html import unescape
 from conciliador_core.documents import find_documents
 from conciliador_core.errors import ParseError
 from conciliador_core.models import BankAccountRef, BankTransaction, Statement
-from conciliador_core.money import parse_brl_amount
+from conciliador_core.money import parse_ofx_amount
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 
@@ -78,7 +78,7 @@ def _memo(fields: dict[str, str]) -> str:
 
 def _transaction(fields: dict[str, str]) -> BankTransaction:
     posted_on = _parse_date(fields.get("DTPOSTED", ""))
-    amount = parse_brl_amount(fields.get("TRNAMT", ""))
+    amount = parse_ofx_amount(fields.get("TRNAMT", ""))
     memo = _memo(fields)
     return BankTransaction(
         fitid=fields.get("FITID") or None,
@@ -143,7 +143,7 @@ def parse_ofx(data: bytes) -> Statement:
             flush_txn()
             section = None if closing else "bal"
             continue
-        if tag == "BANKTRANLIST" or tag == "AVAILBAL":
+        if tag in ("BANKTRANLIST", "AVAILBAL"):
             flush_txn()
             section = None
             continue
@@ -168,6 +168,6 @@ def parse_ofx(data: bytes) -> Statement:
         ),
         start=_optional_date(head.get("DTSTART")),
         end=_optional_date(head.get("DTEND")),
-        ledger_balance_cents=parse_brl_amount(balance_text) if balance_text else None,
+        ledger_balance_cents=parse_ofx_amount(balance_text) if balance_text else None,
         transactions=tuple(transactions),
     )

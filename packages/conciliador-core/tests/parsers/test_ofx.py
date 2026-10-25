@@ -176,3 +176,23 @@ def test_hostile_input_only_raises_parse_error(data):
         parse_ofx(data)
     except ParseError:
         pass
+
+
+def test_thousands_like_amount_is_decimal():
+    raw = make_ofx(TX).replace(b"<TRNAMT>1234.56", b"<TRNAMT>10.500", 1)
+    assert parse_ofx(raw).transactions[0].amount_cents == 1050
+
+
+@pytest.mark.parametrize("amount", [b"", b"1,234"])
+def test_bad_trnamt(amount):
+    raw = make_ofx(TX).replace(b"<TRNAMT>1234.56", b"<TRNAMT>" + amount, 1)
+    with pytest.raises(ParseError) as e:
+        parse_ofx(raw)
+    assert e.value.code == "invalid_amount"
+
+
+def test_invalid_balamt():
+    raw = make_ofx(TX, ledger_balance_cents=500000).replace(b"<BALAMT>5000.00", b"<BALAMT>5x", 1)
+    with pytest.raises(ParseError) as e:
+        parse_ofx(raw)
+    assert e.value.code == "invalid_amount"
