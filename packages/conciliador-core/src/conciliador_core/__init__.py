@@ -3,8 +3,11 @@
 from conciliador_core.dedup import deduplicate_transactions
 from conciliador_core.engine import (
     BalanceCheck,
+    BankReconciliation,
+    GroupSuggestion,
     ItemSituation,
     ItemState,
+    LedgerLine,
     MatchConfig,
     Rule,
     RuleBasedProvider,
@@ -12,8 +15,10 @@ from conciliador_core.engine import (
     SuggestionProvider,
     check_balance,
     classify_item,
+    find_group_suggestions,
     find_probable_duplicates,
     has_gap,
+    reconcile_balances,
 )
 from conciliador_core.errors import ParseError
 from conciliador_core.models import (
@@ -40,14 +45,17 @@ __version__ = "0.1.0"
 __all__ = [
     "BalanceCheck",
     "BankAccountRef",
+    "BankReconciliation",
     "BankTransaction",
     "CsvParseResult",
     "Direction",
     "ExpectedItem",
     "FiscalParseResult",
+    "GroupSuggestion",
     "ItemSituation",
     "ItemState",
     "ItemStatus",
+    "LedgerLine",
     "MatchConfig",
     "ParseError",
     "RowError",
@@ -61,10 +69,12 @@ __all__ = [
     "check_balance",
     "classify_item",
     "deduplicate_transactions",
+    "find_group_suggestions",
     "find_probable_duplicates",
     "has_gap",
     "parse_fiscal_xml",
     "parse_items_csv",
     "parse_ofx",
+    "reconcile_balances",
     "template_csv",
 ]

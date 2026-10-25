@@ -3,13 +3,22 @@
 from conciliador_core.engine.balance import BalanceCheck, check_balance, has_gap
 from conciliador_core.engine.config import MatchConfig
 from conciliador_core.engine.duplicates import find_probable_duplicates
+from conciliador_core.engine.many_to_many import GroupSuggestion, find_group_suggestions
 from conciliador_core.engine.matcher import Rule, RuleBasedProvider, Suggestion, SuggestionProvider
+from conciliador_core.engine.reconciliation import (
+    BankReconciliation,
+    LedgerLine,
+    reconcile_balances,
+)
 from conciliador_core.engine.status import ItemSituation, ItemState, classify_item
 
 __all__ = [
     "BalanceCheck",
+    "BankReconciliation",
+    "GroupSuggestion",
     "ItemSituation",
     "ItemState",
+    "LedgerLine",
     "MatchConfig",
     "Rule",
     "RuleBasedProvider",
@@ -17,6 +26,8 @@ __all__ = [
     "SuggestionProvider",
     "check_balance",
     "classify_item",
+    "find_group_suggestions",
     "find_probable_duplicates",
     "has_gap",
+    "reconcile_balances",
 ]

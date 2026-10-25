@@ -18,6 +18,8 @@ class Rule(StrEnum):
     NUMBER = "number"
     UNIQUE = "unique"
     AMBIGUOUS = "ambiguous"
+    PARTIAL = "partial"  # 1 título quitado em 2+ lançamentos
+    BATCH = "batch"  # 1 lançamento que quita 2+ títulos
 
 
 @dataclass(frozen=True)
