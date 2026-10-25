@@ -23,6 +23,7 @@ _KNOWN = _REQUIRED + _OPTIONAL
 _DATE = re.compile(r"([0-9]{2})/([0-9]{2})/([0-9]{4})", re.ASCII)
 _CURRENCY = re.compile(r"R\$\s*", re.IGNORECASE)
 _NEWLINE = re.compile(r"\r\n|\r|\n")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _DIRECTIONS = {"receber": Direction.INFLOW, "pagar": Direction.OUTFLOW}
 
 
@@ -159,7 +160,9 @@ def parse_items_csv(data: bytes) -> CsvParseResult:
                 errors.append(RowError(line, "campo com quebra de linha — verifique aspas"))
                 continue
             cells = {
-                name: record[idx].strip() if idx is not None and idx < len(record) else ""
+                name: _CONTROL.sub("", record[idx]).strip()
+                if idx is not None and idx < len(record)
+                else ""
                 for name, idx in ((n, columns.get(n)) for n in _KNOWN)
             }
             built = _build_item(cells)
