@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "conciliador-synth"
+version = "0.1.0"
+description = "Gerador de dados sintéticos para testar o conciliador-core"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["conciliador-core"]
+
+[tool.uv.sources]
+conciliador-core = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/conciliador_synth"]

@@ -1,0 +1,49 @@
+[project]
+name = "conciliacao-ia-workspace"
+version = "0.0.0"
+description = "Workspace de desenvolvimento do conciliador-core"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["packages/*", "tools/*"]
+
+[tool.uv.sources]
+conciliador-core = { workspace = true }
+conciliador-synth = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "conciliador-core",
+    "conciliador-synth",
+    "pytest",
+    "pytest-cov",
+    "hypothesis",
+    "mypy",
+    "ruff",
+    "bandit",
+    "pip-audit",
+    "types-defusedxml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/conciliador-core/tests", "tools/synthetic-data/tests"]
+addopts = "--import-mode=importlib"
+
+[tool.mypy]
+strict = true
+mypy_path = ["packages/conciliador-core/src", "tools/synthetic-data/src"]
+explicit_package_bases = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
