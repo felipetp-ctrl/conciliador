@@ -1,0 +1,3 @@
+﻿tipo;valor;vencimento;contraparte_nome;contraparte_documento;documento_numero;descricao
+receber;1.500,00;05/11/2026;Cliente Exemplo Ltda;11.222.333/0001-81;1001;Venda de exemplo
+pagar;250,90;10/11/2026;Fornecedor Exemplo SA;11.222.333/0001-81;2002;Compra de exemplo

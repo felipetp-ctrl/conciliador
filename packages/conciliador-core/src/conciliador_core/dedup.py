@@ -19,7 +19,7 @@ def normalize_memo(memo: str) -> str:
     return _SPACES.sub(" ", plain).strip()
 
 
-def _encode(fields: Sequence[str]) -> str:
+def encode_fields(fields: Sequence[str]) -> str:
     # Prefixo de tamanho: um "|" dentro de um campo não muda a divisão dos campos.
     return "|".join(f"{len(f)}:{f}" for f in fields)
 
@@ -41,7 +41,7 @@ def compute_dedup_keys(account: BankAccountRef, txns: Sequence[tuple[date, int, 
     for posted_on, amount_cents, memo in txns:
         triple = (posted_on, amount_cents, normalize_memo(memo))
         seen[triple] += 1
-        raw = _encode(
+        raw = encode_fields(
             [
                 account.bank_id,
                 account.branch or "",
