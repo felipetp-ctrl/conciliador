@@ -1,0 +1,9 @@
+docs/
+.superpowers/
+.venv/
+__pycache__/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
