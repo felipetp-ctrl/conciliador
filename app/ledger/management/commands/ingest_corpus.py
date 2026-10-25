@@ -1,5 +1,6 @@
 """Ingere o corpus público no banco local (dados de teste, nenhum dado real de cliente)."""
 
+from accounts.models import seed_demo_user
 from django.core.management.base import BaseCommand
 
 from ledger import ingest
@@ -19,6 +20,7 @@ class Command(BaseCommand):
         company, _ = Company.objects.get_or_create(
             cnpj="11222333000181", defaults={"name": "Oficina Exemplo Ltda"}
         )
+        seed_demo_user(company)
         report = ingest.ingest_corpus(corpus_dir, company)
         ok = [r for r in report if r["ok"]]
         bad = [r for r in report if not r["ok"]]

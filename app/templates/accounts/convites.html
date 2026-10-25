@@ -1,0 +1,22 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Convidar contador — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Convidar contador</h1>
+<p class="faint" style="margin:4px 0 20px">Seu contador entra com acesso somente leitura ao demonstrativo de {{ company.name }}.</p>
+
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="email">E-mail do contador</label><div class="field__control"><input class="field__input" id="email" name="email" type="email" required placeholder="contador@escritorio.com.br"></div></div>
+  <div><button class="btn btn--primary" type="submit">{% icon "pen-line" 16 %}Gerar convite</button></div>
+</form>
+
+{% if invites %}
+<section class="stack" style="margin-top:24px;gap:10px">
+  <div class="micro">Convites pendentes</div>
+  {% for i in invites %}
+  <div class="alert"><span class="alert__icon">{% icon "clock" 18 %}</span><div class="alert__body"><div class="alert__title">{{ i.email }}</div><span class="mono mono--12 mono--muted">{{ request.scheme }}://{{ request.get_host }}{% url 'invite_accept' i.token %}</span></div></div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'fechamento' 'atual' %}">{% icon "arrow-left" 14 %}Voltar ao fechamento</a></p>
+{% endblock %}

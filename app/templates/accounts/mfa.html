@@ -1,0 +1,11 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Verificação em duas etapas — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Verificação em duas etapas</h1>
+<p class="faint" style="margin:4px 0 20px">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+{% if error %}{% include "ds/alert.html" with tone="late" title="Código inválido" body=error %}{% endif %}
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="code">Código</label><div class="field__control"><input class="field__input" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus></div></div>
+  <div><button class="btn btn--primary" type="submit" style="width:100%">Verificar</button></div>
+</form>
+{% endblock %}

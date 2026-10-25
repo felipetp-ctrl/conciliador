@@ -7,15 +7,37 @@ from __future__ import annotations
 
 from datetime import date
 
+from accounts.models import Invite, Membership, Role, User
 from conciliador_ui.templatetags.conciliador_ds import brl as brl_filter
 from conciliador_ui.templatetags.conciliador_ds import doc as doc_filter
 from django.test import TestCase
 
 from . import models, services
 
+_CNPJ_SEQ = [0]
+_EMAIL_SEQ = [0]
 
-def _company() -> models.Company:
-    return models.Company.objects.create(name="Oficina Exemplo Ltda", cnpj="11222333000181")
+
+def _company(name: str = "Oficina Exemplo Ltda", cnpj: str | None = None) -> models.Company:
+    if cnpj is None:
+        _CNPJ_SEQ[0] += 1
+        cnpj = f"11{_CNPJ_SEQ[0]:012d}"
+    return models.Company.objects.create(name=name, cnpj=cnpj)
+
+
+def _user(company: models.Company, role: str = Role.OWNER, email: str | None = None) -> User:
+    if email is None:
+        _EMAIL_SEQ[0] += 1
+        email = f"user{_EMAIL_SEQ[0]}@example.com"
+    user = User.objects.create_user(email, "Dono Teste", "senha-forte-123")
+    Membership.objects.create(user=user, company=company, role=role)
+    return user
+
+
+def _login(client, company: models.Company, role: str = Role.OWNER) -> User:
+    user = _user(company, role)
+    client.force_login(user)
+    return user
 
 
 def _account(company: models.Company) -> models.BankAccount:
@@ -255,6 +277,7 @@ class ReconciliationFeatureTests(TestCase):
     def test_classify_bank_only_removes_it_from_unexplained(self):
         company = _company()
         account = _account(company)
+        _login(self.client, company)
         account.ledger_balance_cents = -3990
         account.opening_balance_cents = 0
         account.save()
@@ -277,6 +300,7 @@ class ReconciliationFeatureTests(TestCase):
 
     def test_transfer_is_neutral_and_does_not_count_twice(self):
         company = _company()
+        _login(self.client, company)
         a1 = _account(company)
         a2 = models.BankAccount.objects.create(
             company=company, bank_id="001", branch="0001", account_number="99999-9"
@@ -303,6 +327,7 @@ class ReconciliationFeatureTests(TestCase):
     def test_partial_suggestion_and_confirm(self):
         company = _company()
         account = _account(company)
+        _login(self.client, company)
         _tx(
             account,
             40000,
@@ -334,6 +359,7 @@ class ReconciliationFeatureTests(TestCase):
     def test_batch_suggestion_and_confirm(self):
         company = _company()
         account = _account(company)
+        _login(self.client, company)
         _tx(
             account,
             100000,
@@ -356,6 +382,7 @@ class ReconciliationFeatureTests(TestCase):
     def test_aprovar_lote_confirms_high_confidence_only(self):
         company = _company()
         account = _account(company)
+        _login(self.client, company)
         _tx(
             account,
             190000,
@@ -401,6 +428,7 @@ class ViewTests(TestCase):
     def setUp(self):
         self.company = _company()
         self.account = _account(self.company)
+        _login(self.client, self.company)
         _tx(self.account, 100000, "RECEBIMENTO CLIENTE FICTICIO", date(2026, 1, 1), key="k1")
         _tx(self.account, -20000, "ALUGUEL DEMONSTRACAO", date(2026, 1, 2), key="k2")
         _item(self.company, 98500, date(2024, 1, 15))
@@ -408,8 +436,36 @@ class ViewTests(TestCase):
     def test_fechamento_renders(self):
         self.assertEqual(self.client.get("/fechamento/atual/").status_code, 200)
 
-    def test_contador_renders(self):
-        self.assertEqual(self.client.get("/fechamento/atual/?view=contador").status_code, 200)
+    def test_contador_renders_read_only(self):
+        from django.test import Client
+
+        c = Client()
+        _login(c, self.company, Role.ACCOUNTANT)
+        html = c.get("/fechamento/atual/").content.decode()
+        self.assertEqual(c.get("/fechamento/atual/").status_code, 200)
+        self.assertIn("Demonstrativo de conciliação", html)
+        self.assertIn("somente leitura", html)
+
+    def test_contador_cannot_mutate(self):
+        from django.test import Client
+
+        c = Client()
+        _login(c, self.company, Role.ACCOUNTANT)
+        # qualquer POST de mutação devolve 403
+        item = next(
+            i
+            for i in services.reconcile(self.company)["items"]
+            if i["status"] == "nao_identificado" and i.get("bank")
+        )
+        resp = c.post(f"/item/{item['id']}/classificar/", {"kind": "tarifa"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_anonymous_is_redirected_to_login(self):
+        from django.test import Client
+
+        resp = Client().get("/fechamento/atual/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/entrar/", resp["Location"])
 
     def test_landing_renders(self):
         self.assertEqual(self.client.get("/landing/").status_code, 200)
@@ -521,3 +577,79 @@ class HealthTests(TestCase):
             resp = self.client.get(url)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json(), {"status": "ok"})
+
+
+class AccountsTests(TestCase):
+    def test_signup_creates_company_and_owner(self):
+        resp = self.client.post(
+            "/comecar/",
+            {"email": "nova@example.com", "name": "Nova Empresa", "password": "senha-forte-123"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        user = User.objects.get(email="nova@example.com")
+        self.assertTrue(Membership.objects.filter(user=user, role=Role.OWNER).exists())
+        self.assertTrue(user.is_authenticated)
+
+    def test_login_wrong_password_is_rejected(self):
+        company = _company()
+        user = _user(company)
+        resp = self.client.post("/entrar/", {"email": user.email, "password": "errada"})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_login_with_mfa_requires_code(self):
+        import pyotp
+
+        company = _company()
+        user = _user(company)
+        secret = pyotp.random_base32()
+        user.mfa_secret = secret
+        user.save(update_fields=["mfa_secret"])
+
+        resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/entrar/mfa/", resp["Location"])
+
+        wrong = self.client.post("/entrar/mfa/", {"code": "000000"})
+        self.assertEqual(wrong.status_code, 401)
+
+        right = self.client.post("/entrar/mfa/", {"code": pyotp.TOTP(secret).now()})
+        self.assertEqual(right.status_code, 302)
+
+    def test_invite_flow_grants_accountant_access(self):
+        from django.test import Client
+
+        owner_company = _company()
+        owner = _user(owner_company)
+        self.client.force_login(owner)
+        self.client.post("/convites/", {"email": "contador@example.com"})
+        invite = Invite.objects.get(email="contador@example.com")
+
+        c = Client()
+        resp = c.get(f"/entrar-convite/{invite.token}/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/comecar/", resp["Location"])
+
+        c.post(
+            "/comecar/",
+            {"email": "contador@example.com", "name": "Contador", "password": "senha-forte-123"},
+        )
+        contador = User.objects.get(email="contador@example.com")
+        self.assertTrue(
+            Membership.objects.filter(
+                user=contador, company=owner_company, role=Role.ACCOUNTANT
+            ).exists()
+        )
+
+    def test_company_isolation_between_owners(self):
+        from django.test import Client
+
+        a = _company()
+        _tx(_account(a), 12345, "PIX DA EMPRESA A", date(2026, 1, 1), key="k-a")
+        b = _company()
+        _tx(_account(b), 99999, "PIX DA EMPRESA B", date(2026, 1, 1), key="k-b")
+
+        ca = Client()
+        _login(ca, a)
+        html = ca.get("/fechamento/atual/").content.decode()
+        self.assertIn("PIX DA EMPRESA A", html)
+        self.assertNotIn("PIX DA EMPRESA B", html)

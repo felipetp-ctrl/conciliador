@@ -15,15 +15,27 @@ DEBUG = True
 ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
     "django.contrib.staticfiles",
+    "accounts.apps.AccountsConfig",
     "conciliador_ui",
     "ledger.apps.LedgerConfig",
 ]
 
 MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
+
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "fechamento"
+LOGOUT_REDIRECT_URL = "login"
 
 DATABASES = {
     "default": {
@@ -44,7 +56,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.template.context_processors.csrf",
                 "django.template.context_processors.static",
-                "conciliador.context_processors.user",
+                "django.contrib.auth.context_processors.auth",
+                "conciliador.context_processors.globals",
             ],
         },
     },

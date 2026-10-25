@@ -1,10 +1,14 @@
-"""Context processors do conciliador (dev: usuário de demonstração sem auth)."""
+"""Context processors do conciliador (globais de template)."""
 
-from types import SimpleNamespace
+from __future__ import annotations
+
+from accounts.views import resolve_company
 
 
-def user(request):
-    # Autenticação (com MFA) entra no Plano 2; por ora, um usuário de demonstração.
-    if not hasattr(request, "user"):
-        request.user = SimpleNamespace(get_full_name=lambda: "Ana Souza")
-    return {}
+def globals(request):
+    """Injeta a empresa/visão ativas e os membros para o template base."""
+    company, role = resolve_company(request)
+    return {
+        "active_company": company,
+        "active_role": role,
+    }

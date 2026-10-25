@@ -6,13 +6,14 @@ Mutações (confirmar/recusar/desfazer) gravam vínculos e respondem com ``HX-Re
 
 from __future__ import annotations
 
+from accounts.models import Role
+from accounts.views import resolve_company
 from conciliador_ui.landing_context import landing_context
+from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
 from . import models, services
-
-DEMO_CNPJ = "11222333000181"
 
 _RULE_KEY = {
     "Regra 1": "document",
@@ -24,11 +25,32 @@ _RULE_KEY = {
 }
 
 
-def _company() -> models.Company:
-    c, _ = models.Company.objects.get_or_create(
-        cnpj=DEMO_CNPJ, defaults={"name": "Oficina Exemplo Ltda"}
-    )
-    return c
+def _company_of(request: HttpRequest) -> models.Company:
+    company, _role = resolve_company(request)
+    if company is None:
+        raise PermissionError("usuário sem empresa")
+    return company
+
+
+def _role_of(request: HttpRequest) -> str | None:
+    return resolve_company(request)[1]
+
+
+def _who(request: HttpRequest) -> str:
+    return request.user.get_full_name() or request.user.email
+
+
+def _dono_required(view_func):
+    """Só o dono muta; o contador é somente leitura (403 se tentar via POST direto)."""
+    from functools import wraps
+
+    @wraps(view_func)
+    def _wrapped(request: HttpRequest, *args, **kwargs):
+        if _role_of(request) == Role.ACCOUNTANT:
+            return HttpResponse(status=403)
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
 
 
 def _conta(
@@ -55,8 +77,8 @@ def _periodo(conta: models.BankAccount | None) -> dict:
 
 
 def _base(request: HttpRequest, nav: str) -> tuple[dict, models.Company]:
-    company = _company()
-    view = request.GET.get("view", "dono")
+    company = _company_of(request)
+    view = "contador" if _role_of(request) == Role.ACCOUNTANT else "dono"
     conta, contas = _conta(request, company)
     ctx = services.reconcile(company, conta)
     periodo = _periodo(conta)
@@ -69,10 +91,15 @@ def _base(request: HttpRequest, nav: str) -> tuple[dict, models.Company]:
             "periodos": [periodo],
             "view": view,
             "nav": nav,
-            "can_switch_view": True,
             "conta_id": conta.pk if conta else None,
             "qs_conta": f"&conta={conta.pk}" if conta else "",
-            "qs_view": "&view=contador" if view == "contador" else "",
+            "conta_empresa_id": company.pk,
+            "empresas": [
+                {"company_id": m.company_id, "company_name": m.company.name}
+                for m in request.user.memberships.select_related("company").order_by(
+                    "company__name"
+                )
+            ],
         }
     )
     return ctx, company
@@ -107,6 +134,7 @@ def _filtros_contador(recon: list[dict]) -> list[dict]:
     return out
 
 
+@login_required
 def fechamento(request: HttpRequest, periodo_slug: str):
     ctx, _ = _base(request, "fechamento")
     filtro = request.GET.get("f", "todos")
@@ -135,11 +163,13 @@ def _filtered_contador(items: list[dict], filtro: str) -> list[dict]:
     return items
 
 
+@login_required
 def fechamento_totais(request: HttpRequest, periodo_slug: str):
     ctx, _ = _base(request, "fechamento")
     return render(request, "app/_totais.html", ctx)
 
 
+@login_required
 def fechamento_lista(request: HttpRequest, periodo_slug: str):
     ctx, _ = _base(request, "fechamento")
     filtro = request.GET.get("f", "todos")
@@ -157,6 +187,7 @@ def _find_item(company: models.Company, item_id: str) -> dict | None:
     return None
 
 
+@login_required
 def item_detalhe(request: HttpRequest, item_id: str):
     ctx, company = _base(request, "fechamento")
     item = _find_item(company, item_id)
@@ -239,9 +270,7 @@ def _conta_by_id(company: models.Company, conta_id: int | None) -> models.BankAc
     return models.BankAccount.objects.filter(company=company, pk=conta_id).first()
 
 
-def _create_links(
-    company: models.Company, pairs: list[tuple], rule: str, who: str = "Ana Souza"
-) -> None:
+def _create_links(company: models.Company, pairs: list[tuple], rule: str, who: str = "") -> None:
     for tx, it in pairs:
         models.Link.objects.update_or_create(
             company=company,
@@ -251,18 +280,20 @@ def _create_links(
         )
 
 
-def _confirm(company: models.Company, item: dict, doc_id: int | None = None) -> int | None:
+def _confirm(
+    company: models.Company, item: dict, doc_id: int | None = None, who: str = ""
+) -> int | None:
     """Cria os vínculos de uma sugestão (1:1, ambígua, parcela ou remessa). Devolve a conta."""
     if item["id"].startswith("grp:"):
         _, kind, anchor, *rest = item["id"].split(":")
         if kind == "p":
             it = models.ExpectedItem.objects.get(pk=int(anchor))
             txns = list(models.BankTransaction.objects.filter(pk__in=[int(x) for x in rest]))
-            _create_links(company, [(t, it) for t in txns], "partial")
+            _create_links(company, [(t, it) for t in txns], "partial", who)
             return txns[0].account_id
         tx = models.BankTransaction.objects.get(pk=int(anchor))
         its = list(models.ExpectedItem.objects.filter(pk__in=[int(x) for x in rest]))
-        _create_links(company, [(tx, i) for i in its], "batch")
+        _create_links(company, [(tx, i) for i in its], "batch", who)
         return tx.account_id
 
     tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
@@ -271,21 +302,25 @@ def _confirm(company: models.Company, item: dict, doc_id: int | None = None) -> 
     else:
         doc_id = item["doc"]["id"]
     it = models.ExpectedItem.objects.get(pk=doc_id)
-    _create_links(company, [(tx, it)], _RULE_KEY.get(item.get("rule"), "unique"))
+    _create_links(company, [(tx, it)], _RULE_KEY.get(item.get("rule"), "unique"), who)
     return tx.account_id
 
 
+@login_required
+@_dono_required
 def item_confirmar(request: HttpRequest, item_id: str):
-    company = _company()
+    company = _company_of(request)
     item = _find_item(company, item_id)
     if not item:
         return HttpResponse(status=404)
-    conta_id = _confirm(company, item, request.POST.get("doc_id"))
+    conta_id = _confirm(company, item, request.POST.get("doc_id"), _who(request))
     return HttpResponse(headers={"HX-Redirect": _back(conta_id)})
 
 
+@login_required
+@_dono_required
 def item_recusar(request: HttpRequest, item_id: str):
-    company = _company()
+    company = _company_of(request)
     item = _find_item(company, item_id)
     if not item or item.get("kind"):
         return HttpResponse(status=404)
@@ -296,6 +331,8 @@ def item_recusar(request: HttpRequest, item_id: str):
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
+@login_required
+@_dono_required
 def item_desfazer(request: HttpRequest, item_id: str):
     if not item_id.startswith("lk:"):
         return HttpResponse(status=404)
@@ -307,8 +344,10 @@ def item_desfazer(request: HttpRequest, item_id: str):
     return HttpResponse(headers={"HX-Redirect": _back(conta_id)})
 
 
+@login_required
+@_dono_required
 def item_classificar(request: HttpRequest, item_id: str):
-    company = _company()
+    company = _company_of(request)
     item = _find_item(company, item_id)
     if not item or not item.get("bank"):
         return HttpResponse(status=404)
@@ -326,7 +365,7 @@ def item_classificar(request: HttpRequest, item_id: str):
         tx.classification_direction = "inflow" if direction == "in" else "outflow"
         tx.transfer_counterpart = None
     tx.classified_note = (request.POST.get("note") or "")[:200]
-    tx.classified_by = "Ana Souza"
+    tx.classified_by = _who(request)
     from django.utils import timezone
 
     tx.classified_at = timezone.now()
@@ -334,8 +373,10 @@ def item_classificar(request: HttpRequest, item_id: str):
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
+@login_required
+@_dono_required
 def item_desclassificar(request: HttpRequest, item_id: str):
-    item = _find_item(_company(), item_id)
+    item = _find_item(_company_of(request), item_id)
     if not item or not item.get("bank"):
         return HttpResponse(status=404)
     tx = models.BankTransaction.objects.get(pk=item["bank"]["id"])
@@ -354,20 +395,22 @@ def item_desclassificar(request: HttpRequest, item_id: str):
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
+@login_required
+@_dono_required
 def aprovar_lote(request: HttpRequest):
     """Confirma de uma vez todas as sugestões de alta confiança (sem candidatos empatados)."""
-    company = _company()
+    company = _company_of(request)
     conta, _ = _conta(request, company)
     ctx = services.reconcile(company, conta)
-    confirmados = 0
+    who = _who(request)
     for item in ctx["items"]:
         if item["status"] != "a_confirmar" or item.get("candidates"):
             continue
-        _confirm(company, item)
-        confirmados += 1
+        _confirm(company, item, who=who)
     return HttpResponse(headers={"HX-Redirect": _back(conta.pk if conta else None)})
 
 
+@login_required
 def importacao(request: HttpRequest):
     base, _ = _base(request, "importacao")
     base.update(
@@ -391,8 +434,9 @@ def health(request: HttpRequest):
 
 
 # --------------------------------------------------------------------------- #
-# Stubs do MVP (exportações, importação via upload, login) — ligados depois.
+# Stubs do MVP (exportações, upload real, convites de contador) — ligados depois.
 # --------------------------------------------------------------------------- #
+@login_required
 def demonstrativo_lista(request: HttpRequest, periodo_slug: str):
     ctx, _ = _base(request, "fechamento")
     filtro = request.GET.get("f", "todos")
@@ -401,21 +445,21 @@ def demonstrativo_lista(request: HttpRequest, periodo_slug: str):
     return render(request, "app/demonstrativo.html", ctx)
 
 
+@login_required
 def demonstrativo_csv(request: HttpRequest, periodo_slug: str):
     return HttpResponse("demonstrativo.csv (placeholder)\n", content_type="text/csv")
 
 
+@login_required
 def demonstrativo_pdf(request: HttpRequest, periodo_slug: str):
     return HttpResponse("demonstrativo.pdf (placeholder)", content_type="text/plain")
 
 
-def item_manual(request: HttpRequest, item_id: str):
-    return HttpResponse(headers={"HX-Redirect": "/fechamento/atual/"})
-
-
+@login_required
+@_dono_required
 def vinculo_manual(request: HttpRequest):
     """Vincula manualmente um documento a um lançamento (parcial ou quitado com diferença)."""
-    company = _company()
+    company = _company_of(request)
     it = models.ExpectedItem.objects.get(pk=request.POST["doc_id"])
     tx = models.BankTransaction.objects.get(pk=request.POST["bank_id"])
     mode = request.POST.get("mode", "parcial")
@@ -429,12 +473,13 @@ def vinculo_manual(request: HttpRequest):
             "rule": "manual",
             "closed_with_difference": with_difference,
             "reason": reason,
-            "created_by": "Ana Souza",
+            "created_by": _who(request),
         },
     )
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
+@login_required
 def importacao_enviar(request: HttpRequest, kind: str):
     return render(
         request,
@@ -446,25 +491,20 @@ def importacao_enviar(request: HttpRequest, kind: str):
     )
 
 
+@login_required
 def importacao_duplicatas(request: HttpRequest):
     return render(request, "app/_duplicatas.html", {"duplicatas": []})
 
 
+@login_required
 def modelo_csv(request: HttpRequest):
     from conciliador_core import template_csv
 
     return HttpResponse(template_csv, content_type="text/csv")
 
 
+@login_required
 def duplicatas_revisar(request: HttpRequest):
-    return redirect("fechamento", "atual")
-
-
-def login(request: HttpRequest):
-    return redirect("fechamento", "atual")
-
-
-def signup(request: HttpRequest):
     return redirect("fechamento", "atual")
 
 

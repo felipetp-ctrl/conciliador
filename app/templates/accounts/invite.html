@@ -1,0 +1,11 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Convite — conciliador{% endblock %}
+{% block content %}
+{% if error %}
+  {% include "ds/alert.html" with tone="late" title="Convite inválido" body=error %}
+{% else %}
+  <h1 class="page-header__title" style="font-size:22px">Você foi convidado</h1>
+  <p class="faint" style="margin:4px 0 20px">Entre ou crie uma conta para acessar o demonstrativo da empresa.</p>
+  <div class="row"><a class="btn btn--primary" href="{% url 'login' %}">Entrar</a><a class="btn" href="{% url 'signup' %}">Criar conta</a></div>
+{% endif %}
+{% endblock %}

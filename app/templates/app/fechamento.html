@@ -23,7 +23,7 @@
   <div class="section__head">
     <h2 class="h2" id="h-lista">Banco ⟷ documentos</h2>
     <nav class="tabs tabs--pill" aria-label="Filtrar por situação">
-      {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-get="{% url 'fechamento_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}" hx-target="#lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
+      {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}" hx-get="{% url 'fechamento_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}" hx-target="#lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
     </nav>
   </div>
   {% include "app/_lista.html" %}

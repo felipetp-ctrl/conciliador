@@ -239,6 +239,11 @@
 .recon__check--pending{color:var(--status-pending)}
 .recon__check--fail{color:var(--status-late);font-weight:400}
 
+/* ---------- autenticação ---------- */
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-page);padding:24px}
+.auth__wrap{display:flex;flex-direction:column;gap:16px;width:100%;max-width:400px}
+.auth__card{padding:28px}
+
 /* ---------- muitos lados (parcela / remessa) ---------- */
 .ledger-row__many{display:flex;flex-direction:column;gap:6px;min-width:0}
 .pair__side--many{gap:10px}

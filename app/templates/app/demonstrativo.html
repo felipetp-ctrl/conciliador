@@ -12,7 +12,7 @@
 <section class="card">{% include "ds/ledger_close.html" with view="contador" %}</section>
 <section class="section">
   <nav class="tabs" aria-label="Filtrar por situação" style="margin-bottom:8px">
-    {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-get="{% url 'demonstrativo_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" hx-target="#demo-lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}{{ qs_view }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
+    {% for f in filtros %}<a class="tab" href="?f={{ f.id }}{{ qs_conta }}" hx-get="{% url 'demonstrativo_lista' periodo.slug %}?f={{ f.id }}{{ qs_conta }}" hx-target="#demo-lista" hx-push-url="?f={{ f.id }}{{ qs_conta }}" {% if f.id == filtro %}aria-current="true"{% endif %}>{{ f.label }}<span class="tab__count">{{ f.count }}</span></a>{% endfor %}
   </nav>
   <div id="demo-lista" class="card card--flush" style="padding-top:16px"><div class="table-wrap"><table class="table table--dense">
     <thead><tr><th scope="col">Situação</th><th scope="col">Data</th><th scope="col">Histórico do extrato</th><th scope="col">Documento</th><th scope="col">Venc.</th><th scope="col" class="num">Extrato</th><th scope="col" class="num">Documento</th><th scope="col" class="num">Diferença</th></tr></thead>

@@ -14,6 +14,7 @@ import tempfile
 from datetime import timedelta
 from pathlib import Path
 
+from accounts.models import seed_demo_user
 from conciliador_synth.ofx import SynthTxn, make_ofx
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -47,6 +48,7 @@ class Command(BaseCommand):
         company, _ = Company.objects.get_or_create(
             cnpj=DEMO_CNPJ, defaults={"name": "Oficina Exemplo Ltda"}
         )
+        seed_demo_user(company)
         today = timezone.localdate()
         due_pago, due_aberto, due_vencido = (
             today - timedelta(days=3),

@@ -1,0 +1,15 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Começar — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Criar conta</h1>
+<p class="faint" style="margin:4px 0 20px">Sua empresa começa com uma conta vazia. Depois você importa o extrato e as notas.</p>
+{% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível criar a conta" body=error %}{% endif %}
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="name">Seu nome</label><div class="field__control"><input class="field__input" id="name" name="name" value="{{ name }}" required autofocus></div></div>
+  <div class="field"><label class="field__label" for="email">E-mail</label><div class="field__control"><input class="field__input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required></div></div>
+  <div class="field"><label class="field__label" for="password">Senha</label><div class="field__control"><input class="field__input" id="password" name="password" type="password" autocomplete="new-password" required></div></div>
+  <div class="muted" style="font-size:12.5px">Mínimo de 8 caracteres. Ative a verificação em duas etapas depois, em Segurança.</div>
+  <div><button class="btn btn--primary" type="submit" style="width:100%">Criar conta</button></div>
+</form>
+<p class="muted" style="font-size:13px;margin-top:16px">Já tem conta? <a href="{% url 'login' %}">Entrar</a>.</p>
+{% endblock %}

@@ -7,6 +7,7 @@ license = { text = "AGPL-3.0-only" }
 dependencies = [
     "django>=5.1,<6.0",
     "conciliador-core",
+    "pyotp>=2.9,<3",
 ]
 
 [tool.uv.sources]

@@ -1,0 +1,13 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Entrar — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Entrar</h1>
+<p class="faint" style="margin:4px 0 20px">Acesse o fechamento da sua empresa.</p>
+{% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível entrar" body=error %}{% endif %}
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="email">E-mail</label><div class="field__control"><input class="field__input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required autofocus></div></div>
+  <div class="field"><label class="field__label" for="password">Senha</label><div class="field__control"><input class="field__input" id="password" name="password" type="password" autocomplete="current-password" required></div></div>
+  <div><button class="btn btn--primary" type="submit" style="width:100%">Entrar</button></div>
+</form>
+<p class="muted" style="font-size:13px;margin-top:16px">Ainda não tem conta? <a href="{% url 'signup' %}">Comece agora</a>.</p>
+{% endblock %}
