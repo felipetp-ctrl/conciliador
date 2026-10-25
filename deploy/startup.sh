@@ -39,7 +39,20 @@ if [ -n "${SQLITE_PATH:-}" ]; then
   BACKUP_DIR="${BACKUP_DIR:-/home/backups}"
   mkdir -p "$(dirname "$SQLITE_PATH")" "$BACKUP_DIR"
   if [ -f "$SQLITE_PATH" ]; then
-    cp "$SQLITE_PATH" "$BACKUP_DIR/conciliador-$(date +%Y%m%d-%H%M%S).sqlite3"
+    DEST="$BACKUP_DIR/conciliador-$(date +%Y%m%d-%H%M%S).sqlite3"
+    # A API de backup do sqlite3 lida com WAL: copiar o arquivo com `cp` poderia
+    # perder transações que ainda estão no -wal.
+    "$VENV/bin/python" - "$SQLITE_PATH" "$DEST" <<'PY'
+import sqlite3
+import sys
+
+src = sqlite3.connect(sys.argv[1], timeout=20)
+dst = sqlite3.connect(sys.argv[2], timeout=20)
+with dst:
+    src.backup(dst)
+dst.close()
+src.close()
+PY
     ls -1t "$BACKUP_DIR"/conciliador-*.sqlite3 2>/dev/null | tail -n +8 | while read -r old; do
       rm -f "$old"
     done

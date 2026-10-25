@@ -11,71 +11,123 @@ O app é Django + HTMX, servido por **gunicorn** e com os estáticos servidos pe
 O código é o mesmo; a escolha é só variável de ambiente. O `startup.sh` detecta
 `SQLITE_PATH` e sobe **1 worker** (com 4 threads) para não disputar escrita no arquivo.
 
-## 1. Conta Azure
+## 1. Conta Azure (CPF, sem CNPJ)
 
 Sem CNPJ a conta é **individual (CPF)**, mas dá para criar um **tenant próprio** do
 projeto — separado da conta Azure for Students — e migrar para CNPJ quando a empresa
-existir.
+existir. A conta student **não** pode ser convertida em corporativa.
 
-1. Crie o tenant em [entra.microsoft.com](https://entra.microsoft.com) → *Identity* →
-   *Overview* → *Manage tenants* → *Create*. Use `conciliador.onmicrosoft.com` e um
-   admin `admin@conciliador.onmicrosoft.com` (não use @gmail/@hotmail como único admin).
-2. Assine o Azure em [azure.microsoft.com/free](https://azure.microsoft.com/free/)
-   entrando com esse admin. Preencha CPF, endereço e cartão.
-3. Ative MFA, crie uma conta de emergência e um **budget alert** (ex.: US$ 20/mês).
-4. No terminal: `az login --tenant conciliador.onmicrosoft.com` e confirme a assinatura
-   com `az account show`.
+1. Entre em [entra.microsoft.com](https://entra.microsoft.com) com sua conta pessoal
+   Microsoft e vá em *Identity* → *Overview* → *Manage tenants* → *Create*.
+   - Nome: `Conciliador`.
+   - Domínio inicial: `conciliador.onmicrosoft.com`.
+   - País: Brasil.
+   - O primeiro admin será algo como `admin@conciliador.onmicrosoft.com`; guarde a senha.
+2. Saia e entre de novo com esse admin. Em [azure.microsoft.com/free](https://azure.microsoft.com/free/)
+   assine o Azure com **CPF**, endereço, CEP, telefone e cartão internacional.
+   - Se o portal não oferecer os US$ 200 (a conta student já pode ter consumido o
+     benefício), escolha **pay-as-you-go**. O piloto custa ~US$ 15/mês.
+3. No tenant: ative MFA, crie uma conta de emergência (*break-glass*) e um
+   **budget alert** (Cost Management → Budgets, ex.: US$ 20/mês).
+4. No terminal:
 
-## 2. Recursos (piloto SQLite, Brazil South)
+   ```bash
+   az logout
+   az login --tenant conciliador.onmicrosoft.com
+   az account show --query "{name:name, id:id, tenant:tenantId, user:user.name}" -o json
+   ```
+
+   Confirme que a assinatura **não** é a “Azure for Students”.
+
+## 2. Criar os recursos
+
+O script é idempotente: pode rodar de novo para ajustar configuração sem recriar nada.
 
 ```bash
 RG=rg-conciliador-prod
-APP=conciliador-prod-<sufixo>       # globalmente único
+APP=conciliador-prod-<sufixo>   # globalmente único; vira <APP>.azurewebsites.net
 PLAN=asp-conciliador-prod
-LOCATION=brazilsouth
 
-az group create -n "$RG" -l "$LOCATION"
-az appservice plan create -g "$RG" -n "$PLAN" --is-linux --sku B1
-az webapp create -g "$RG" -p "$PLAN" -n "$APP" --runtime "PYTHON:3.12"
+RG="$RG" APP="$APP" PLAN="$PLAN" bash deploy/azure-setup.sh
 ```
 
-## 3. App Settings
+Ele cria o resource group em **Brazil South**, o plano **B1 Linux**, o Web App
+**Python 3.12**, gera a `SECRET_KEY`, grava os App Settings, liga HTTPS/TLS 1.2,
+desliga FTPS, define o startup `bash deploy/startup.sh`, o always-on e o health check
+em `/health`.
 
-```bash
-az webapp config appsettings set -g "$RG" -n "$APP" --settings \
-  DEBUG=0 \
-  SECRET_KEY="<gere com openssl rand -base64 48>" \
-  SQLITE_PATH=/home/data/conciliador.sqlite3 \
-  STATIC_ROOT=/home/staticfiles \
-  ALLOWED_HOSTS="$APP.azurewebsites.net" \
-  CSRF_TRUSTED_ORIGINS="https://$APP.azurewebsites.net" \
-  WEB_CONCURRENCY=1 \
-  GUNICORN_THREADS=4 \
-  SCM_DO_BUILD_DURING_DEPLOYMENT=0 \
-  WEBSITES_PORT=8000
+O script se recusa a rodar na assinatura student; para insistir, use `ALLOW_STUDENT=1`.
 
-az webapp config set -g "$RG" -n "$APP" --startup-file "bash deploy/startup.sh"
-az webapp config set -g "$RG" -n "$APP" --always-on true
-```
+## 3. App Settings (referência)
 
-O health check do App Service deve apontar para `/health` (Configuration › Health check).
-A rota responde `{"status":"ok"}` com 200 e `{"status":"error"}` com 503 se o banco não
-responder.
+O script já define tudo. Para conferir ou ajustar à mão:
 
-## 4. Deploy
+| Variável | Valor |
+|---|---|
+| `DEBUG` | `0` |
+| `SECRET_KEY` | `openssl rand -base64 48` (não reaproveite a de dev) |
+| `SQLITE_PATH` | `/home/data/conciliador.sqlite3` |
+| `STATIC_ROOT` | `/home/staticfiles` |
+| `ALLOWED_HOSTS` | `<APP>.azurewebsites.net,169.254.129.1` |
+| `CSRF_TRUSTED_ORIGINS` | `https://<APP>.azurewebsites.net` |
+| `WEB_CONCURRENCY` | `1` |
+| `GUNICORN_THREADS` | `4` |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `0` |
+| `WEBSITES_PORT` | `8000` |
 
-O pacote é o repositório versionado (sem `.venv`, `docs/` nem banco local):
+O `169.254.129.1` é a origem dos health checks internos do App Service; sem ele o
+Django responde 400 e o app é marcado como não saudável. O `/health` responde
+`{"status":"ok"}` com 200 e `{"status":"error"}` com 503 se o banco não responder.
+
+`SECURE_SSL_REDIRECT` fica desligado de propósito: o redirect é feito pelo
+`--https-only` do App Service, e o health check interno não deve levar 301.
+
+## 4. Primeiro deploy (local)
+
+Antes de existir repositório no GitHub, suba o pacote versionado direto da máquina:
 
 ```bash
 git archive --format=zip -o /tmp/conciliador.zip HEAD
-az webapp deploy -g "$RG" -n "$APP" --src-path /tmp/conciliador.zip --type zip
+az webapp deploy -g "$RG" -n "$APP" --src-path /tmp/conciliador.zip --type zip --clean true
 ```
 
 No primeiro start o `startup.sh` cria o venv em `/home/venv`, instala
 `deploy/requirements.txt`, faz backup do SQLite (se existir), roda `migrate`,
-`collectstatic` e sobe o gunicorn.
+`collectstatic` e sobe o gunicorn. Acompanhe em *Log stream* ou:
 
-## 5. Backup e migração para PostgreSQL
+```bash
+az webapp log tail -g "$RG" -n "$APP"
+curl -fsS "https://$APP.azurewebsites.net/health"
+```
+
+Crie o superusuário pelo SSH do App Service:
+
+```bash
+az webapp ssh -g "$RG" -n "$APP"
+cd /home/site/wwwroot && /home/venv/bin/python app/manage.py createsuperuser
+```
+
+## 5. Deploy contínuo (GitHub Actions + OIDC)
+
+Sem segredo de longa duração: o workflow troca um token do GitHub por credencial
+Azure. O `.github/workflows/deploy.yml` publica **depois que o CI passa no `main`**
+(e também por `workflow_dispatch`).
+
+1. Crie o repositório no GitHub e faça o push do branch `main`.
+2. Rode o script (precisa de permissão de admin no tenant):
+
+   ```bash
+   REPO=<dono>/<repo> RG="$RG" APP="$APP" bash deploy/azure-oidc.sh
+   ```
+
+   Ele cria o App registration, a credencial federada
+   `repo:<dono>/<repo>:ref:refs/heads/main` e dá **Contributor só no resource group**.
+3. Cole no repositório os comandos `gh secret set` / `gh variable set` que o script
+   imprime (ou configure em *Settings → Secrets and variables → Actions*).
+4. Faça um push no `main`; o workflow empacota com `git archive` e chama
+   `az webapp deploy`. No fim ele espera o `/health` responder 200 por até 5 minutos.
+
+## 6. Backup e migração para PostgreSQL
 
 - O SQLite fica em `/home/data` (persistente entre reinícios e deploys). A cada start o
   script copia o arquivo para `/home/backups` e mantém os **7 últimos**.
@@ -85,17 +137,6 @@ No primeiro start o `startup.sh` cria o venv em `/home/venv`, instala
   `pgloader`). O schema é o mesmo.
 - SQLite no App Service **não é produção de verdade**: uma instância, sem HA e sem
   backup gerenciado. Use só no piloto.
-
-## 6. GitHub Actions (OIDC)
-
-Sem segredo de longa duração: o workflow troca um token do GitHub por credencial Azure.
-
-1. Crie um *App registration* e uma **credencial federada** para o repositório
-   (`repo:<org>/<repo>:ref:refs/heads/main`).
-2. Dê **Contributor só no resource group** para o service principal.
-3. No GitHub, configure as variáveis `AZURE_RESOURCE_GROUP` e `AZURE_WEBAPP_NAME` e os
-   secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` e `AZURE_SUBSCRIPTION_ID`.
-4. O workflow empacota com `git archive` e chama `az webapp deploy`.
 
 ## Dependências de produção
 
