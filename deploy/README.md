@@ -13,31 +13,35 @@ O código é o mesmo; a escolha é só variável de ambiente. O `startup.sh` det
 
 ## 1. Conta Azure (CPF, sem CNPJ)
 
-Sem CNPJ a conta é **individual (CPF)**, mas dá para criar um **tenant próprio** do
-projeto — separado da conta Azure for Students — e migrar para CNPJ quando a empresa
-existir. A conta student **não** pode ser convertida em corporativa.
+A conta **Azure for Students** (`@pucpr.edu.br`) não serve: ela pertence ao tenant da
+faculdade, não pode ser convertida e você não é admin dele. Crie uma conta nova com um
+**e-mail pessoal** (Outlook ou Gmail).
 
-1. Entre em [entra.microsoft.com](https://entra.microsoft.com) com sua conta pessoal
-   Microsoft e vá em *Identity* → *Overview* → *Manage tenants* → *Create*.
-   - Nome: `Conciliador`.
-   - Domínio inicial: `conciliador.onmicrosoft.com`.
-   - País: Brasil.
-   - O primeiro admin será algo como `admin@conciliador.onmicrosoft.com`; guarde a senha.
-2. Saia e entre de novo com esse admin. Em [azure.microsoft.com/free](https://azure.microsoft.com/free/)
-   assine o Azure com **CPF**, endereço, CEP, telefone e cartão internacional.
-   - Se o portal não oferecer os US$ 200 (a conta student já pode ter consumido o
-     benefício), escolha **pay-as-you-go**. O piloto custa ~US$ 15/mês.
-3. No tenant: ative MFA, crie uma conta de emergência (*break-glass*) e um
+1. Entre em [azure.microsoft.com/free](https://azure.microsoft.com/free/) e comece o
+   cadastro com sua conta Microsoft pessoal. Se usar Gmail, o próprio fluxo cria a
+   conta Microsoft vinculada.
+2. Preencha **CPF**, endereço, CEP, telefone e cartão internacional. O Azure cria
+   automaticamente um **tenant dedicado** (algo como `seunome.onmicrosoft.com`) e você
+   fica Global Admin dele — não é o tenant da PUC.
+   - Se o portal não oferecer os US$ 200 (o benefício pode já ter sido usado na conta
+     student), escolha **pay-as-you-go**. O piloto custa ~US$ 15/mês.
+   - O domínio `onmicrosoft.com` é só para login administrativo; o domínio da empresa
+     (`conciliador.com.br`) pode ser adicionado depois.
+3. No portal: ative MFA, crie uma conta de emergência (*break-glass*) e um
    **budget alert** (Cost Management → Budgets, ex.: US$ 20/mês).
 4. No terminal:
 
    ```bash
    az logout
-   az login --tenant conciliador.onmicrosoft.com
+   az login          # escolha a conta pessoal nova, não a @pucpr.edu.br
    az account show --query "{name:name, id:id, tenant:tenantId, user:user.name}" -o json
    ```
 
    Confirme que a assinatura **não** é a “Azure for Students”.
+
+> Criar um tenant *extra* em `entra.microsoft.com` exige licença paga ou o papel
+> *Tenant Creator*; por isso o caminho acima (cadastro do Azure) é o mais confiável
+> para começar. Se a empresa já tiver Microsoft 365, aí sim vale usar o tenant dela.
 
 ## 2. Criar os recursos
 

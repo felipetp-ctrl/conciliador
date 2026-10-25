@@ -25,7 +25,7 @@ case "$SUB_NAME" in
   *Students*)
     if [ "${ALLOW_STUDENT:-0}" != "1" ]; then
       echo "ERRO: a assinatura atual é '$SUB_NAME'." >&2
-      echo "Entre no tenant da empresa (az login --tenant ...) ou use ALLOW_STUDENT=1." >&2
+      echo "Faça az login e escolha a conta/tenant novo da empresa, ou use ALLOW_STUDENT=1." >&2
       exit 1
     fi
     ;;

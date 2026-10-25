@@ -37,12 +37,13 @@ fi
 
 echo "== credencial federada (repo:$REPO, branch $BRANCH)"
 SUBJECT="repo:$REPO:ref:refs/heads/$BRANCH"
+CRED_NAME="github-$BRANCH-$(printf '%s' "$REPO" | tr '/' '-')"
 EXISTING="$(az ad app federated-credential list --id "$CLIENT_ID" \
   --query "[?subject=='$SUBJECT'].name | [0]" -o tsv)"
 if [ -z "$EXISTING" ]; then
   az ad app federated-credential create --id "$CLIENT_ID" --parameters "$(cat <<JSON
 {
-  "name": "github-$BRANCH",
+  "name": "$CRED_NAME",
   "issuer": "https://token.actions.githubusercontent.com",
   "subject": "$SUBJECT",
   "audiences": ["api://AzureADTokenExchange"]
