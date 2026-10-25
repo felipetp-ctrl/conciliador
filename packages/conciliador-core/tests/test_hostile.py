@@ -36,6 +36,10 @@ PARSERS: list[Callable[[bytes], Any]] = [
 ]
 
 
+def _no_control(text: str) -> bool:
+    return all(ord(c) >= 32 and ord(c) != 127 for c in text)
+
+
 def _check_item(item: ExpectedItem) -> None:
     assert type(item.amount_cents) is int
     assert type(item.due_on) is date
@@ -52,6 +56,9 @@ def _check_result(result: object) -> None:
     elif isinstance(result, (CsvParseResult, FiscalParseResult)):
         for item in result.items:
             _check_item(item)
+            assert item.counterpart_name is None or _no_control(item.counterpart_name)
+    else:
+        raise AssertionError(f"unexpected result type {type(result)}")
 
 
 def _run(parser: Callable[[bytes], Any], data: bytes) -> None:
@@ -183,11 +190,26 @@ def test_control_chars_in_memo_are_stripped():
     assert "FIM" in memo
 
 
-def test_control_chars_in_csv_text_fields_are_stripped():
-    raw = (
-        b"tipo;valor;vencimento;contraparte_nome;descricao\n"
-        b"receber;1,00;01/01/2027;Jo\x00\x1bao\x07;a\x00b\n"
-    )
-    r = parse_items_csv(raw)
-    assert len(r.items) == 1
-    assert r.items[0].counterpart_name == "Joao"
+def _csv(valor="1,00", doc="", nome="x"):
+    return (
+        "tipo;valor;vencimento;contraparte_nome;contraparte_documento;descricao\n"
+        f"receber;{valor};01/01/2027;{nome};{doc};d\n"
+    ).encode()
+
+
+def test_control_chars_in_csv_text_fields_become_spaces():
+    r = parse_items_csv(_csv(nome="PAGAMENTO\tFORNECEDOR\x00\x1b  X"))
+    assert r.errors == ()
+    assert r.items[0].counterpart_name == "PAGAMENTO FORNECEDOR X"
+
+
+def test_control_char_in_csv_valor_is_row_error():
+    r = parse_items_csv(_csv(valor="1\x002,00"))
+    assert r.items == ()
+    assert "valor" in r.errors[0].message
+
+
+def test_control_char_in_csv_documento_is_row_error():
+    r = parse_items_csv(_csv(doc="529982\x0047725"))
+    assert r.items == ()
+    assert "contraparte_documento" in r.errors[0].message
