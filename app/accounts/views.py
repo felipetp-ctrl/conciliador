@@ -6,12 +6,21 @@ import pyotp
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect, render, resolve_url
 from django.utils import timezone
 from ledger.models import Company
 
 from .cnpj import check_cnpj
 from .models import Invite, Membership, Role, User
+
+
+def _redirect(request: HttpRequest, to: str, *args: object, **kwargs: object) -> HttpResponse:
+    """Redireciona; sob hx-boost responde 200 + HX-Redirect para o HTMX navegar de fato."""
+    if request.headers.get("HX-Request"):
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = resolve_url(to, *args, **kwargs)
+        return response
+    return redirect(to, *args, **kwargs)
 
 
 def resolve_company(request: HttpRequest) -> tuple[Company | None, str | None]:
@@ -80,7 +89,7 @@ def signup(request: HttpRequest) -> HttpResponse:
                 invite.save(update_fields=["accepted"])
                 request.session["active_company_id"] = invite.company_id
             request.session.pop("pending_invite_token", None)
-        return redirect("fechamento", "atual")
+        return _redirect(request, "fechamento", "atual")
     return render(request, "accounts/signup.html")
 
 
@@ -103,9 +112,9 @@ def login_view(request: HttpRequest) -> HttpResponse:
             )
         if user.mfa_secret:
             request.session["mfa_pending_user_id"] = user.pk
-            return redirect("mfa_verify")
+            return _redirect(request, "mfa_verify")
         login(request, user)
-        return redirect("fechamento", "atual")
+        return _redirect(request, "fechamento", "atual")
     return render(request, "accounts/login.html")
 
 
@@ -113,13 +122,13 @@ def mfa_verify(request: HttpRequest) -> HttpResponse:
     user_id = request.session.get("mfa_pending_user_id")
     user = User.objects.filter(pk=user_id).first() if user_id else None
     if user is None:
-        return redirect("login")
+        return _redirect(request, "login")
     if request.method == "POST":
         code = (request.POST.get("code") or "").strip()
         if pyotp.TOTP(user.mfa_secret).verify(code):
             login(request, user)
             request.session.pop("mfa_pending_user_id", None)
-            return redirect("fechamento", "atual")
+            return _redirect(request, "fechamento", "atual")
         return render(request, "accounts/mfa.html", {"error": "Código inválido."}, status=401)
     return render(request, "accounts/mfa.html")
 

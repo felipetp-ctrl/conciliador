@@ -3,15 +3,33 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}conciliador{% endblock %}</title>
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"defaultSwapStyle":"outerHTML"}'>
 <link rel="stylesheet" href="{% static 'styles.css' %}">
 <link rel="stylesheet" href="{% static 'ds/ds.css' %}">
+<link rel="stylesheet" href="{% static 'ds/auth.css' %}">
+<script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+<script src="{% static 'js/auth.js' %}" defer></script>
+{% block head_extra %}{% endblock %}
 </head>
-<body class="auth">
-<div class="auth__wrap">
-  <a class="site-nav__brand" href="/">conciliador</a>
-  <div class="card auth__card">
-    {% block content %}{% endblock %}
-  </div>
+<body class="auth-page">
+<div class="auth-split">
+  <main class="auth-split__main">
+    <a class="auth-brand" href="/">
+      <span class="auth-brand__mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>
+      conciliador
+    </a>
+    <div class="auth-form-wrap">
+      <div class="auth-form">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+    <footer class="auth-footer">
+      <span>© conciliador</span>
+      {% url 'privacy' as privacy_url %}{% if privacy_url %}<a href="{{ privacy_url }}">Privacidade</a>{% endif %}
+      {% url 'terms' as terms_url %}{% if terms_url %}<a href="{{ terms_url }}">Termos de uso</a>{% endif %}
+    </footer>
+  </main>
+  {% block aside %}{% include "accounts/_auth_aside.html" %}{% endblock %}
 </div>
 </body>
 </html>
