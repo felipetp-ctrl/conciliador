@@ -8,6 +8,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Protocol
 
+from conciliador_core.documents import document_spans
 from conciliador_core.engine.config import MatchConfig
 from conciliador_core.models import BankTransaction, Direction, ExpectedItem, ItemStatus
 
@@ -30,6 +31,15 @@ class Suggestion:
 
 
 class SuggestionProvider(Protocol):
+    """Gera sugestões de vínculo para uma pessoa confirmar.
+
+    ``rejected``: pares ``(transaction_key, item_id)`` que a pessoa recusou.
+    ``excluded_item_ids``: itens que a pessoa **removeu ou mesclou** (deixaram de existir para
+    a conciliação). **Não** é para duplicatas prováveis (``find_probable_duplicates``): enquanto
+    não resolvidas, elas já viram ``AMBIGUOUS`` naturalmente quando empatam e precisam continuar
+    vinculáveis por ``DOCUMENT``/``NUMBER``; excluí-las esconderia o item certo.
+    """
+
     def suggest(
         self,
         transactions: Sequence[BankTransaction],
@@ -44,6 +54,17 @@ class SuggestionProvider(Protocol):
 _BASE_SCORE = {Rule.DOCUMENT: 300, Rule.NUMBER: 200, Rule.UNIQUE: 100}
 _STRENGTH = (Rule.DOCUMENT, Rule.NUMBER, Rule.UNIQUE)
 _DIGITS = re.compile(r"[0-9]+")
+# Datas no histórico (dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd, mm/aaaa, dd/mm): seus dígitos
+# nunca são nº de documento ("REF 10/2026" não cita a nota nº 10).
+_DATE = re.compile(
+    r"(?<![0-9])(?:"
+    r"[0-9]{1,2}([/-])[0-9]{1,2}\1[0-9]{4}"
+    r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}"
+    r"|[0-9]{1,2}/[0-9]{4}"
+    r"|[0-9]{1,2}/[0-9]{1,2}"
+    r")(?![0-9])"
+)
+_MIN_NUMBER_DIGITS = 3
 
 
 @dataclass(frozen=True)
@@ -77,11 +98,42 @@ def _reason(diff: int, rule: Rule, delta: int) -> str:
     return "; ".join(parts)
 
 
-def _strip_zeros(value: str) -> str:
-    return value.lstrip("0")
+def _number_key(number: str | None) -> str | None:
+    """Só os dígitos do nº do documento, sem zeros à esquerda ("NF-1001" vira "1001").
+
+    Nºs com menos de 3 dígitos significativos não contam: casam com qualquer dia, mês ou
+    parcela citados no histórico.
+    """
+    if number is None:
+        return None
+    digits = "".join(_DIGITS.findall(number)).lstrip("0")
+    return digits if len(digits) >= _MIN_NUMBER_DIGITS else None
+
+
+def _memo_numbers(memo: str) -> frozenset[str]:
+    """Sequências máximas de dígitos ASCII do histórico, sem zeros à esquerda, exceto as que
+    fazem parte de uma data ou de um CPF/CNPJ válido."""
+    blocked = [m.span() for m in _DATE.finditer(memo)]
+    blocked += [(start, end) for start, end, _ in document_spans(memo)]
+    tokens: set[str] = set()
+    for match in _DIGITS.finditer(memo):
+        start, end = match.span()
+        if any(start < b_end and end > b_start for b_start, b_end in blocked):
+            continue
+        token = match.group().lstrip("0")
+        if token:
+            tokens.add(token)
+    return frozenset(tokens)
 
 
 class RuleBasedProvider:
+    """Regras em ordem de força: ``DOCUMENT`` (CPF/CNPJ do item no histórico), ``NUMBER``
+    (nº do documento no histórico) e ``UNIQUE`` (único candidato por valor e janela).
+
+    Veja :class:`SuggestionProvider` sobre ``rejected`` e ``excluded_item_ids`` (este último
+    não serve para duplicatas prováveis).
+    """
+
     def suggest(
         self,
         transactions: Sequence[BankTransaction],
@@ -172,7 +224,7 @@ def _candidates(
     amounts = index.amounts[t.direction]
     lo = bisect_left(amounts, amount - config.tolerance_cents)
     hi = bisect_right(amounts, amount + config.tolerance_cents)
-    tokens = {_strip_zeros(x) for x in _DIGITS.findall(t.memo)} - {""}
+    tokens = _memo_numbers(t.memo)
     found: list[_Candidate] = []
     for item in index.items[t.direction][lo:hi]:
         if (t.dedup_key, item.id) in rejected:
@@ -186,7 +238,7 @@ def _candidates(
         delta = (t.posted_on - item.due_on).days
         if item.counterpart_doc is not None and item.counterpart_doc in t.documents:
             rule = Rule.DOCUMENT
-        elif item.document_number is not None and _strip_zeros(item.document_number) in tokens:
+        elif (number := _number_key(item.document_number)) is not None and number in tokens:
             rule = Rule.NUMBER
         else:
             rule = Rule.UNIQUE

@@ -240,3 +240,72 @@ def test_large_input_smoke():
     items = [item(f"i{i}", 15, 1000 + i) for i in range(n)]
     assert len(primaries(suggest(txs, items))) == n
     assert suggest(txs, items, MatchConfig(tolerance_cents=2))
+
+
+def test_short_number_in_reference_month_is_not_a_match():
+    # Beta (nº 10) e Gama (nº 11) devem R$ 500; o histórico cita o mês de referência 10/2026.
+    s = suggest(
+        [tx(15, 50000, memo="PIX REC GAMA REF 10/2026")],
+        [item("beta", 15, 50000, number="10"), item("gama", 15, 50000, number="11")],
+    )
+    assert {(x.item_id, x.rule, x.is_primary) for x in s} == {
+        ("beta", Rule.AMBIGUOUS, False),
+        ("gama", Rule.AMBIGUOUS, False),
+    }
+
+
+def test_number_is_reduced_to_digits():
+    s = suggest(
+        [tx(15, 1000, memo="PAG 1001")],
+        [item("a", 15, 1000, number="NF-1001"), item("b", 15, 1000, number="9999")],
+    )
+    assert [(x.item_id, x.rule, x.is_primary) for x in s] == [("a", Rule.NUMBER, True)]
+
+
+@pytest.mark.parametrize("number", ["10", "07", "0099", "A1", "NF-12"])
+def test_number_with_fewer_than_3_significant_digits_never_counts(number):
+    s = suggest([tx(15, 1000, memo="PAG 10 07 99 1 12")], [item("a", 15, 1000, number=number)])
+    assert s[0].rule == Rule.UNIQUE
+
+
+@pytest.mark.parametrize(
+    "memo",
+    [
+        "PAG 15/10/2026 X",
+        "PAG 15-10-2026 X",
+        "PAG 2026-10-15 X",
+        "REF 10/2026",
+        "VENC 15/10",
+        "PIX 529.982.247-25",
+        "PIX 52998224725",
+        "TED 11.222.333/0001-81",
+    ],
+)
+def test_digits_inside_dates_or_documents_are_not_numbers(memo):
+    numbers = ["2026", "1510", "15", "102026", "529982", "982", "52998224725", "0001", "222"]
+    items = [item(f"i{n}", 15, 1000, number=n) for n in numbers]
+    s = suggest([tx(15, 1000, memo=memo)], items)
+    assert all(x.rule is Rule.AMBIGUOUS for x in s) and len(s) == len(items)
+
+
+def test_number_next_to_a_date_still_counts():
+    s = suggest(
+        [tx(15, 1000, memo="NF 4321 VENC 15/10/2026")],
+        [item("a", 15, 1000, number="4321"), item("b", 15, 1000, number="2026")],
+    )
+    assert [(x.item_id, x.rule) for x in s] == [("a", Rule.NUMBER)]
+
+
+def test_probable_duplicates_stay_matchable_by_document():
+    # NF-e e planilha do mesmo título: duplicata provável não resolvida. Sem excluí-la,
+    # o lançamento com o CPF/CNPJ continua indo para a NF-e pela regra DOCUMENT.
+    from dataclasses import replace
+
+    from conciliador_core.engine.duplicates import find_probable_duplicates
+    from conciliador_core.models import Source
+
+    nfe = replace(item("nfe:k:1", 17, 98500, doc=DOC, number="123"), source=Source.NFE)
+    csv = replace(item("csv:abc", 17, 98500, number="123"), source=Source.CSV)
+    assert find_probable_duplicates([nfe, csv]) == [("csv:abc", "nfe:k:1")]
+    s = suggest([tx(16, 98500, memo=f"PIX {DOC}", docs=(DOC,))], [nfe, csv])
+    assert [(x.item_id, x.rule, x.is_primary) for x in s] == [("nfe:k:1", Rule.DOCUMENT, True)]

@@ -1,6 +1,7 @@
 import pytest
 from conciliador_core.documents import (
     cnpj_root,
+    document_spans,
     find_documents,
     is_valid_cnpj,
     is_valid_cpf,
@@ -66,3 +67,8 @@ def test_mask_cpf_rejects_non_cpf(bad: str) -> None:
 
 def test_find_documents_deduplicates() -> None:
     assert find_documents("529.982.247-25/529.982.247-25 52998224725") == ("52998224725",)
+
+
+def test_document_spans() -> None:
+    text = "PIX 529.982.247-25 E 11222333000181 X 12345678901"
+    assert document_spans(text) == ((4, 18, "52998224725"), (21, 35, "11222333000181"))

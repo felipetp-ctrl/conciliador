@@ -59,13 +59,22 @@ def cnpj_root(cnpj: str) -> str:
     return only_alnum(cnpj)[:8]
 
 
-def find_documents(text: str) -> tuple[str, ...]:
-    """CPFs/CNPJs válidos no texto, normalizados, na ordem de aparição (sem repetir)."""
-    found: list[str] = []
+def document_spans(text: str) -> tuple[tuple[int, int, str], ...]:
+    """``(início, fim, documento normalizado)`` de cada CPF/CNPJ válido no texto, em ordem."""
+    spans: list[tuple[int, int, str]] = []
     for match in _CANDIDATE.finditer(text):
         norm = only_alnum(match.group())
         valid = is_valid_cpf(norm) if len(norm) == 11 else is_valid_cnpj(norm)
-        if valid and norm not in found:
+        if valid:
+            spans.append((match.start(), match.end(), norm))
+    return tuple(spans)
+
+
+def find_documents(text: str) -> tuple[str, ...]:
+    """CPFs/CNPJs válidos no texto, normalizados, na ordem de aparição (sem repetir)."""
+    found: list[str] = []
+    for _, _, norm in document_spans(text):
+        if norm not in found:
             found.append(norm)
     return tuple(found)
 
