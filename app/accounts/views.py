@@ -7,8 +7,10 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from ledger.models import Company
 
+from .cnpj import check_cnpj
 from .models import Invite, Membership, Role, User
 
 
@@ -165,6 +167,63 @@ def mfa_setup(request: HttpRequest) -> HttpResponse:
 def _otpauth(user: User, secret: str) -> str:
     label = user.email
     return pyotp.TOTP(secret).provisioning_uri(name=label, issuer_name="conciliador")
+
+
+@login_required
+def empresa(request: HttpRequest) -> HttpResponse:
+    """O dono informa o CNPJ real; valida o dígito e consulta a Receita."""
+    company, role = resolve_company(request)
+    if role != Role.OWNER:
+        return HttpResponse(status=403)
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        cnpj = (request.POST.get("cnpj") or "").strip()
+        if not name:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {"error": "Informe o nome da empresa.", "company": company},
+                status=400,
+            )
+        check = check_cnpj(cnpj)
+        if not check.valid_dv:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {"error": check.error, "company": company},
+                status=400,
+            )
+        if check.found is False:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {"error": check.error, "company": company},
+                status=400,
+            )
+        if check.found is True and not check.active:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {
+                    "error": f"CNPJ com situação {check.situacao}. Só aceitamos CNPJ ativo.",
+                    "company": company,
+                },
+                status=400,
+            )
+        company.name = name
+        company.cnpj = check.cnpj
+        company.cnpj_verified = check.found is True
+        company.cnpj_verified_at = timezone.now() if check.found is True else None
+        company.cnpj_status = check.situacao or ""
+        company.save()
+        if check.found is None:
+            return render(
+                request,
+                "accounts/empresa.html",
+                {"warning": check.error, "company": company, "saved": True},
+            )
+        return redirect("fechamento", "atual")
+    return render(request, "accounts/empresa.html", {"company": company})
 
 
 @login_required

@@ -24,6 +24,7 @@
       <div class="select select--sm"><select name="company_id" onchange="this.form.submit()">{% for e in empresas %}<option value="{{ e.company_id }}" {% if e.company_id == conta_empresa_id %}selected{% endif %}>{{ e.company_name }}</option>{% endfor %}</select></div>
     </form>
     {% endif %}
+    {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'empresa' %}">{% icon "scale" 18 %}Empresa</a>{% endif %}
     {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'convites' %}">{% icon "pen-line" 18 %}Convidar contador</a>{% endif %}
     <a class="sidebar__link" href="{% url 'mfa_setup' %}">{% icon "shield-check" 18 %}Segurança</a>
     <div class="sidebar__user"><b>{{ request.user.get_full_name }}</b>{% if view == 'contador' %}Contador · somente leitura{% else %}Titular da empresa{% endif %}</div>

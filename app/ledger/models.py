@@ -13,6 +13,10 @@ from django.db import models
 class Company(models.Model):
     name = models.CharField(max_length=200)
     cnpj = models.CharField(max_length=14, unique=True)
+    # resultado da checagem oficial na Receita (dígito + consulta externa)
+    cnpj_verified = models.BooleanField(default=False)
+    cnpj_verified_at = models.DateTimeField(null=True, blank=True)
+    cnpj_status = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
         verbose_name = "empresa"

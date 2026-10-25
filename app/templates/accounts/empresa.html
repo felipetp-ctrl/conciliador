@@ -1,0 +1,25 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Empresa — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Dados da empresa</h1>
+<p class="faint" style="margin:4px 0 20px">Precisamos do CNPJ real para ler as suas notas e decidir o que é a receber e a pagar.</p>
+
+{% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível salvar" body=error %}{% endif %}
+{% if warning %}{% include "ds/alert.html" with tone="pending" title="Salvo — pendente de confirmação" body=warning %}{% endif %}
+{% if saved and not warning %}{% include "ds/alert.html" with tone="ok" title="Empresa atualizada" body="CNPJ verificado na Receita." %}{% endif %}
+
+{% if company.cnpj_verified %}
+<div class="recon__check recon__check--ok" style="margin-bottom:16px">{% icon "shield-check" 14 %}CNPJ verificado · {{ company.cnpj_status|default:"Ativa" }} · {{ company.cnpj|doc:"nokind" }}</div>
+{% elif company.cnpj and not company.cnpj_verified %}
+<div class="recon__check recon__check--pending" style="margin-bottom:16px">{% icon "clock" 14 %}CNPJ {{ company.cnpj|doc:"nokind" }} — ainda não verificado na Receita.</div>
+{% endif %}
+
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="name">Nome da empresa</label><div class="field__control"><input class="field__input" id="name" name="name" value="{{ company.name }}" required></div></div>
+  <div class="field"><label class="field__label" for="cnpj">CNPJ</label><div class="field__control"><input class="field__input" id="cnpj" name="cnpj" value="{{ company.cnpj }}" placeholder="12.345.678/0001-95" required></div></div>
+  <div class="muted" style="font-size:12.5px">Validamos o dígito e consultamos a Receita Federal na hora.</div>
+  <div><button class="btn btn--primary" type="submit" style="width:100%">{% icon "shield-check" 16 %}Salvar e verificar</button></div>
+</form>
+
+<p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'fechamento' 'atual' %}">{% icon "arrow-left" 14 %}Voltar ao fechamento</a></p>
+{% endblock %}
