@@ -4,48 +4,53 @@
 <h1 class="page-header__title" style="font-size:26px">Política de Privacidade</h1>
 <p class="faint">Versão de 25 de outubro de 2026.</p>
 
-<p>Esta política explica como o <b>conciliador</b> trata dados pessoais. O serviço é operado pelo responsável pelo projeto (neste documento, “nós”). Contato do responsável pelo tratamento: {% if legal_contact %}<a href="mailto:{{ legal_contact }}">{{ legal_contact }}</a>{% else %}<b>canal a ser informado antes da entrada em produção com dados de clientes</b>{% endif %}.</p>
+<p>Esta política explica como o <b>conciliador</b> trata dados pessoais. O serviço é operado pelo responsável pelo projeto (neste documento, “nós”). Contato do responsável pelo tratamento e do encarregado (LGPD, art. 41): {% if legal_contact %}<a href="mailto:{{ legal_contact }}">{{ legal_contact }}</a>{% else %}<b>canal a ser informado antes da entrada em produção com dados de clientes</b>{% endif %}.</p>
 
 <h2 class="h2" style="margin-top:28px">1. Quais dados tratamos</h2>
 <ul>
-  <li><b>Cadastro:</b> nome, e-mail, senha (guardada só como hash Argon2) e fator de autenticação em duas etapas (TOTP).</li>
-  <li><b>Empresa:</b> nome, CNPJ e situação cadastral consultada na Receita Federal.</li>
+  <li><b>Cadastro:</b> nome, e-mail, senha (guardada só como hash Argon2), segredo da verificação em duas etapas (TOTP) e códigos de recuperação (guardados só como hash).</li>
+  <li><b>Empresa:</b> nome, CNPJ e situação cadastral obtida em consulta pública (BrasilAPI, que espelha dados da Receita Federal).</li>
   <li><b>Dados financeiros que você importa:</b> extratos bancários (OFX), notas fiscais (NF-e/NFS-e) e planilhas de contas a pagar e a receber. Esses arquivos podem conter CPF/CNPJ, nomes de contrapartes e valores.</li>
   <li><b>Registros de acesso e auditoria:</b> quem entrou, quando, de qual IP, o que importou, confirmou, recusou ou exportou.</li>
 </ul>
 
 <h2 class="h2" style="margin-top:28px">2. Para que usamos e com qual base legal</h2>
 <ul>
-  <li><b>Prestar o serviço</b> (ler os arquivos, conciliar, mostrar o fechamento e emitir o demonstrativo): execução do contrato.</li>
-  <li><b>Proteger a conta e o serviço</b> (MFA, limite de tentativas, isolamento entre empresas, logs): legítimo interesse e obrigações de segurança.</li>
-  <li><b>Cumprir obrigações legais</b>, inclusive a guarda de registros de acesso por 6 meses (Marco Civil da Internet, art. 15).</li>
+  <li><b>Prestar o serviço</b> (ler os arquivos, conciliar, mostrar o fechamento e emitir o demonstrativo): execução do contrato (LGPD, art. 7º, V).</li>
+  <li><b>Proteger a conta e o serviço</b> (MFA, limite de tentativas, isolamento entre empresas, logs): legítimo interesse e dever de segurança (art. 7º, IX; art. 46).</li>
+  <li><b>Cumprir obrigações legais</b>, inclusive a guarda de registros de acesso por 6 meses (Marco Civil da Internet, art. 15; LGPD, art. 7º, II).</li>
   <li><b>Atender direitos do titular</b> (exportação, correção e exclusão): obrigação legal.</li>
 </ul>
 <p>Não usamos os seus dados para publicidade, não vendemos dados e não treinamos modelos de IA com os seus arquivos.</p>
 
 <h2 class="h2" style="margin-top:28px">3. Com quem compartilhamos</h2>
-<p>Usamos provedores de infraestrutura para hospedar a aplicação e o banco de dados (Microsoft Azure, região Brazil South). Eles tratam os dados apenas para nos prestar o serviço, sob contrato e medidas de segurança. Não há outras transferências, salvo obrigação legal ou ordem judicial.</p>
+<ul>
+  <li><b>Hospedagem:</b> Microsoft Azure, região Brazil South, para rodar a aplicação e guardar o banco de dados. O provedor trata os dados apenas para nos prestar o serviço, sob contrato e medidas de segurança; empresas globais podem tratar dados de suporte e telemetria fora do Brasil conforme seus termos.</li>
+  <li><b>Consulta de CNPJ:</b> BrasilAPI, somente o número do CNPJ que você informa, para validar a situação cadastral. Nenhum dado financeiro é enviado.</li>
+</ul>
+<p>Não há outros compartilhamentos, salvo obrigação legal ou ordem judicial. Não usamos rastreadores nem analytics de terceiros.</p>
 
 <h2 class="h2" style="margin-top:28px">4. Por quanto tempo guardamos</h2>
 <ul>
   <li><b>Dados da conta e financeiros:</b> enquanto a conta existir. Você pode excluir a conta e os dados a qualquer momento dentro do aplicativo.</li>
-  <li><b>Registros de acesso:</b> 6 meses após o acesso, sem conteúdo financeiro, e depois são apagados.</li>
-  <li><b>Backups:</b> até 7 dias, para recuperação de falhas; depois são substituídos.</li>
-  <li><b>Log de auditoria da empresa:</b> apagado junto com a empresa; os registros de acesso permanecem pelo prazo legal.</li>
+  <li><b>Registros de acesso e segurança</b> (login, logout, MFA, bloqueios): 6 meses, e depois são apagados por rotina automática.</li>
+  <li><b>Auditoria de negócio da empresa</b> (importações, confirmações, exportações): enquanto a empresa existir, para prestação de contas; é apagada junto com ela. Após a exclusão, restam apenas os registros de acesso, sem conteúdo financeiro, pelo prazo legal.</li>
+  <li><b>Backups:</b> até 7 cópias recentes do banco, feitas a cada reinício ou deploy e substituídas automaticamente, para recuperação de falhas.</li>
 </ul>
 
-<h2 class="h2" style="margin-top:28px">5. Seus direitos</h2>
-<p>Você pode pedir confirmação de tratamento, acesso, correção, portabilidade, eliminação, informação sobre compartilhamento e revisão de decisões automatizadas. No próprio aplicativo, o titular da empresa pode <b>exportar todos os dados em JSON</b> e <b>excluir a conta</b>. Para os demais pedidos, use o contato acima. Responderemos nos prazos da LGPD.</p>
+<h2 class="h2" style="margin-top:28px">5. Seus direitos e decisões automatizadas</h2>
+<p>Você pode pedir confirmação de tratamento, acesso, correção, portabilidade, eliminação, informação sobre compartilhamento e revisão de decisões automatizadas. No próprio aplicativo, o titular da empresa pode <b>exportar todos os dados em JSON</b> e <b>excluir a conta</b>. Para os demais pedidos, use o contato acima. Você também pode reclamar à ANPD.</p>
+<p><b>Não há decisões unicamente automatizadas</b> com efeitos sobre você ou a empresa: as sugestões de vínculo só valem depois da confirmação de uma pessoa.</p>
 
 <h2 class="h2" style="margin-top:28px">6. Segurança</h2>
-<p>Adotamos autenticação em duas etapas obrigatória, senhas com Argon2, sessão com expiração por inatividade, cookies `Secure`, `HttpOnly` e `SameSite=Lax`, HTTPS, isolamento entre empresas e registro de auditoria. Nenhum sistema é infalível; se houver incidente relevante, comunicaremos os titulares e a ANPD conforme a lei.</p>
+<p>Adotamos autenticação em duas etapas obrigatória com códigos de recuperação de uso único, senhas com Argon2, limite de tentativas de login, sessão com expiração por inatividade, cookies `Secure`, `HttpOnly` e `SameSite=Lax`, HTTPS, isolamento entre empresas e registro de auditoria. Nenhum sistema é infalível; se houver incidente relevante, comunicaremos os titulares e a ANPD conforme a lei.</p>
 
 <h2 class="h2" style="margin-top:28px">7. Cookies</h2>
-<p>Usamos apenas cookies necessários para a sessão e para a proteção contra CSRF. Não usamos cookies de publicidade nem rastreadores de terceiros.</p>
+<p>Usamos apenas cookies necessários para a sessão (que expira após 8 horas de inatividade) e para a proteção contra CSRF. Não usamos cookies de publicidade nem rastreadores de terceiros.</p>
 
 <h2 class="h2" style="margin-top:28px">8. Alterações</h2>
 <p>Se esta política mudar de forma relevante, avisaremos no aplicativo e atualizaremos a data acima. O uso continuado após o aviso vale como ciência da nova versão.</p>
 
-<p class="muted" style="font-size:12.5px;margin-top:28px">Documento em revisão jurídica antes da entrada em produção com dados de clientes.</p>
+<p class="muted" style="font-size:12.5px;margin-top:28px">Minuta revista para refletir o funcionamento do serviço; recomenda-se revisão jurídica profissional antes do uso com dados de clientes.</p>
 <p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'landing' %}">{% icon "arrow-left" 14 %}Voltar ao site</a> · <a href="{% url 'terms' %}">Termos de uso</a></p>
 {% endblock %}
