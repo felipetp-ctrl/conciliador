@@ -167,6 +167,18 @@ Azure. O `.github/workflows/deploy.yml` publica **depois que o CI passa no `main
   dados financeiros; os registros de acesso ficam sem vínculo com a empresa por 6 meses.
 - **MFA é obrigatório:** no primeiro acesso (inclusive do superusuário), o app pede a
   ativação do TOTP antes de liberar o painel. Não há botão de desativar.
+- **Códigos de recuperação:** ao ativar o MFA o app mostra 8 códigos de uso único (só o
+  hash fica no banco) — é o caminho para entrar se o celular for perdido. Em **Segurança**
+  dá para gerar um novo conjunto, que invalida o anterior.
+- **Recuperação pelo SSH (sem SMTP no piloto):**
+  - senha esquecida: `cd /home/site/wwwroot && /home/venv/bin/python app/manage.py changepassword <email>`;
+  - MFA perdido sem código de recuperação: no `manage.py shell`, limpe `mfa_secret` do
+    usuário e apague `user.recovery_codes`; o próximo login exige nova ativação.
+- **Retenção:** `purge_access_logs` roda no startup e apaga logs de acesso/segurança com
+  mais de 6 meses. A auditoria de negócio (importar, confirmar, exportar) fica enquanto a
+  empresa existir e some com ela.
+- **Alertas:** rode o `azure-setup.sh` com `ALERT_EMAIL="voce@dominio.com"` para criar o
+  grupo de ação e o alerta de **Http5xx > 5 em 5 minutos** no App Service.
 - Para migrar para PostgreSQL: crie o servidor, defina `DATABASE_URL`, remova
   `SQLITE_PATH`, rode `migrate` e importe os dados com `dumpdata`/`loaddata` (ou
   `pgloader`). O schema é o mesmo.

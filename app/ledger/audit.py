@@ -6,6 +6,27 @@ from django.http import HttpRequest
 
 from . import models
 
+# Ações de acesso/segurança: ficam só 6 meses (Marco Civil, art. 15). As ações de
+# negócio (importar, confirmar, exportar etc.) ficam enquanto a empresa existir.
+ACCESS_ACTIONS = frozenset(
+    {
+        "login_ok",
+        "login_failed",
+        "login_blocked",
+        "login_first_factor_ok",
+        "login_recovery",
+        "mfa_failed",
+        "mfa_blocked",
+        "mfa_enabled",
+        "recovery_failed",
+        "recovery_codes",
+        "logout",
+        "signup",
+        "account_deleted",
+        "account_delete_failed",
+    }
+)
+
 
 def log(
     request: HttpRequest,

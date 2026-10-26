@@ -1,0 +1,18 @@
+{% extends "accounts/auth_base.html" %}{% load conciliador_ds %}
+{% block title %}Código de recuperação — conciliador{% endblock %}
+{% block content %}
+<div class="auth-kicker">Segurança</div>
+<h1 class="auth-title">Código de recuperação</h1>
+<p class="auth-lede">Use um dos códigos que você guardou ao ativar a verificação em duas etapas. Cada código funciona uma única vez.</p>
+{% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível entrar" body=error %}{% endif %}
+<form class="auth-fields" method="post" hx-boost="true" hx-disabled-elt="find button[type=submit]">{% csrf_token %}
+  <div class="field">
+    <label class="field__label" for="code">Código de recuperação</label>
+    <div class="field__control">
+      <input class="field__input" id="code" name="code" autocomplete="off" placeholder="XXXXX-XXXXX" required autofocus>
+    </div>
+  </div>
+  <button class="btn btn--accent btn--lg auth-submit" type="submit">Entrar</button>
+</form>
+<div class="auth-alt"><span>Tem o autenticador?</span><a class="auth-link" href="{% url 'mfa_verify' %}">Usar o código de 6 dígitos</a></div>
+{% endblock %}

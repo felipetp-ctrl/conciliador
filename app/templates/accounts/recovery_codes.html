@@ -1,0 +1,18 @@
+{% extends "accounts/auth_card_base.html" %}{% load conciliador_ds %}
+{% block title %}Guarde seus códigos — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Guarde seus códigos de recuperação</h1>
+<p class="faint" style="margin:4px 0 20px">Se você perder o celular ou trocar de aparelho, estes códigos são o único jeito de entrar sem o autenticador. <b>Eles aparecem só agora.</b></p>
+
+<div class="alert" style="margin-bottom:16px"><div class="alert__body">
+  <div class="alert__title">Cada código funciona uma única vez</div>
+  <p style="margin:6px 0 0">Salve em um gerenciador de senhas ou imprima e guarde em local seguro. Não envie por e-mail nem compartilhe.</p>
+</div></div>
+
+<div class="mono" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--surface-sunken);padding:16px;border-radius:8px;font-size:16px;letter-spacing:1px">
+  {% for code in codes %}<span>{{ code }}</span>{% endfor %}
+</div>
+
+<p class="muted" style="font-size:13px;margin-top:20px"><a class="btn btn--primary" href="{% url 'fechamento' 'atual' %}">Já guardei — continuar</a></p>
+<p class="muted" style="font-size:12.5px;margin-top:12px">Se perder estes códigos, você pode gerar um novo conjunto depois em <b>Segurança</b>; o conjunto antigo deixa de valer.</p>
+{% endblock %}

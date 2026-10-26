@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("entrar/", views.login_view, name="login"),
     path("entrar/mfa/", views.mfa_verify, name="mfa_verify"),
+    path("entrar/recuperacao/", views.recovery_verify, name="recovery_verify"),
     path("sair/", views.logout_view, name="logout"),
     path("comecar/", views.signup, name="signup"),
     path("entrar-convite/<str:token>/", views.invite_accept, name="invite_accept"),

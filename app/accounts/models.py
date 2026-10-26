@@ -97,6 +97,22 @@ class Invite(models.Model):
         return f"{self.email} → {self.company.name}"
 
 
+class RecoveryCode(models.Model):
+    """Código de recuperação do MFA, de uso único; só o hash fica no banco."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recovery_codes")
+    code_hash = models.CharField(max_length=64, unique=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "código de recuperação"
+        verbose_name_plural = "códigos de recuperação"
+
+    def __str__(self) -> str:
+        return f"{self.user.email} ({'usado' if self.used_at else 'livre'})"
+
+
 def seed_demo_user(
     company: Company,
     email: str = "demo@conciliador.local",

@@ -85,6 +85,29 @@ az webapp update -g "$RG" -n "$APP" --https-only true -o none
 az resource update --ids "$(az webapp show -g "$RG" -n "$APP" --query id -o tsv)" \
   --set properties.healthCheckPath="/health" -o none
 
+# Alerta de erros 5xx por e-mail (opcional, só quando ALERT_EMAIL está definido).
+if [[ -n "${ALERT_EMAIL:-}" ]]; then
+  echo "== alerta de Http5xx para $ALERT_EMAIL"
+  APP_ID="$(az webapp show -g "$RG" -n "$APP" --query id -o tsv)"
+  if ! az monitor action-group show -g "$RG" -n ag-conciliador -o none 2>/dev/null; then
+    az monitor action-group create -g "$RG" -n ag-conciliador --short-name conciliador \
+      --action email operacoes "$ALERT_EMAIL" -o none
+  fi
+  AG_ID="$(az monitor action-group show -g "$RG" -n ag-conciliador --query id -o tsv)"
+  if ! az monitor metrics alert show -g "$RG" -n conciliador-http5xx -o none 2>/dev/null; then
+    az monitor metrics alert create -g "$RG" -n conciliador-http5xx \
+      --scopes "$APP_ID" \
+      --condition "total Http5xx > 5" \
+      --window-size 5m \
+      --evaluation-frequency 1m \
+      --action "$AG_ID" \
+      --description "Mais de 5 respostas 5xx no app em 5 minutos" \
+      -o none
+  fi
+else
+  echo "alertas: pulando (defina ALERT_EMAIL para criar o alerta de Http5xx)"
+fi
+
 cat <<EOF
 
 Pronto. Falta o primeiro deploy (zipdeploy local ou GitHub Actions):

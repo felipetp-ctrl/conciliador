@@ -64,6 +64,8 @@ if [ -n "${STATIC_ROOT:-}" ]; then
 fi
 
 "$VENV/bin/python" app/manage.py migrate --noinput
+# Retenção: apaga logs de acesso com mais de 6 meses (índice em created_at).
+"$VENV/bin/python" app/manage.py purge_access_logs
 "$VENV/bin/python" app/manage.py collectstatic --noinput
 
 WORKERS="${WEB_CONCURRENCY:-2}"

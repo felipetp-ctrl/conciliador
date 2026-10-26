@@ -13,6 +13,15 @@
     <button class="btn btn--ghost" type="submit">Trocar dispositivo</button>
   </form>
 
+  <section class="stack" style="margin-top:20px;gap:8px">
+    <div class="micro">Códigos de recuperação</div>
+    <p class="muted" style="font-size:13px;margin:0">Você tem {{ recovery_left }} código(s) livre(s) para entrar se perder o autenticador. Gerar um novo conjunto invalida os anteriores.</p>
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="action" value="regenerate">
+      <button class="btn btn--ghost" type="submit">Gerar novos códigos</button>
+    </form>
+  </section>
+
 {% elif pending %}
   <p style="margin:0">Abra o aplicativo autenticador e cadastre o segredo abaixo (ou cole o endereço <span class="mono mono--12">otpauth://</span>). Depois confirme com o código de 6 dígitos.</p>
   <div class="mono mono--12" style="word-break:break-all;margin:12px 0;background:var(--surface-sunken);padding:12px;border-radius:8px">{{ otpauth }}</div>

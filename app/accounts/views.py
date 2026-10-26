@@ -14,7 +14,7 @@ from django.utils import timezone
 from ledger.audit import log as audit_log
 from ledger.models import Company
 
-from . import ratelimit
+from . import ratelimit, recovery
 from .cnpj import CnpjCheck, check_cnpj
 from .models import Invite, Membership, Role, User
 
@@ -181,6 +181,35 @@ def mfa_verify(request: HttpRequest) -> HttpResponse:
     return render(request, "accounts/mfa.html")
 
 
+def recovery_verify(request: HttpRequest) -> HttpResponse:
+    """Entrada com código de recuperação (mesmo limite de tentativas do TOTP)."""
+    user_id = request.session.get("mfa_pending_user_id")
+    user = User.objects.filter(pk=user_id).first() if user_id else None
+    if user is None:
+        return _redirect(request, "login")
+    ip = ratelimit.client_ip(request)
+    scope = f"{user.pk}:{ip}"
+    if request.method == "POST":
+        if ratelimit.blocked("mfa", scope, ratelimit.MFA_LIMIT):
+            audit_log(request, "mfa_blocked", actor_email=user.email)
+            return render(
+                request,
+                "accounts/recovery.html",
+                {"error": "Muitas tentativas. Aguarde 5 minutos e tente de novo."},
+                status=429,
+            )
+        if recovery.verify(user, request.POST.get("code") or ""):
+            ratelimit.clear("mfa", scope)
+            login(request, user)
+            request.session.pop("mfa_pending_user_id", None)
+            audit_log(request, "login_recovery", actor_email=user.email)
+            return _redirect(request, "fechamento", "atual")
+        ratelimit.hit("mfa", scope, ratelimit.MFA_WINDOW)
+        audit_log(request, "recovery_failed", actor_email=user.email)
+        return render(request, "accounts/recovery.html", {"error": "Código inválido ou já usado."})
+    return render(request, "accounts/recovery.html")
+
+
 def logout_view(request: HttpRequest) -> HttpResponseRedirect:
     if request.user.is_authenticated:
         audit_log(request, "logout")
@@ -206,7 +235,9 @@ def mfa_setup(request: HttpRequest) -> HttpResponse:
             user.save(update_fields=["mfa_secret"])
             request.session.pop("mfa_pending_secret", None)
             audit_log(request, "mfa_enabled")
-            return redirect("mfa_setup")
+            codes = recovery.generate(user)
+            audit_log(request, "recovery_codes")
+            return render(request, "accounts/recovery_codes.html", {"codes": codes})
         return render(
             request,
             "accounts/mfa_setup.html",
@@ -215,13 +246,23 @@ def mfa_setup(request: HttpRequest) -> HttpResponse:
         )
     if request.method == "POST" and request.POST.get("action") == "disable":
         return HttpResponse(status=403)
+    if request.method == "POST" and request.POST.get("action") == "regenerate":
+        if not user.mfa_secret:
+            return HttpResponse(status=403)
+        codes = recovery.generate(user)
+        audit_log(request, "recovery_codes")
+        return render(request, "accounts/recovery_codes.html", {"codes": codes})
     if request.method == "POST" and request.POST.get("action") == "cancel":
         request.session.pop("mfa_pending_secret", None)
         return redirect("mfa_setup")
     return render(
         request,
         "accounts/mfa_setup.html",
-        {"pending": pending, "otpauth": _otpauth(user, pending) if pending else ""},
+        {
+            "pending": pending,
+            "otpauth": _otpauth(user, pending) if pending else "",
+            "recovery_left": user.recovery_codes.filter(used_at__isnull=True).count(),
+        },
     )
 
 

@@ -1256,7 +1256,9 @@ class SecurityHardeningTests(TestCase):
             {"action": "confirm", "code": pyotp.TOTP(pending).now()},
         )
 
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "códigos de recuperação")
+        self.assertEqual(len(resp.context["codes"]), 8)
         user.refresh_from_db()
         self.assertTrue(user.mfa_secret)
         self.assertEqual(self.client.get("/fechamento/atual/").status_code, 200)
@@ -1448,3 +1450,96 @@ class LgpdTests(TestCase):
             resp = self.client.get(url)
             self.assertEqual(resp.status_code, 200)
             self.assertContains(resp, text)
+
+
+class RecoveryCodeTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def _activate(self, user):
+        import pyotp
+
+        self.client.force_login(user)
+        self.client.post("/seguranca/mfa/", {"action": "start"})
+        pending = self.client.session["mfa_pending_secret"]
+        resp = self.client.post(
+            "/seguranca/mfa/",
+            {"action": "confirm", "code": pyotp.TOTP(pending).now()},
+        )
+        self.assertEqual(resp.status_code, 200)
+        return list(resp.context["codes"])
+
+    def _start_login(self, user):
+        self.client.logout()
+        resp = self.client.post("/entrar/", {"email": user.email, "password": _SENHA})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/entrar/mfa/")
+
+    def test_recovery_code_logs_in_only_once(self):
+        user = _user(_company())
+        codes = self._activate(user)
+
+        self._start_login(user)
+        resp = self.client.post("/entrar/recuperacao/", {"code": codes[0]})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/fechamento/atual/")
+
+        self._start_login(user)
+        resp = self.client.post("/entrar/recuperacao/", {"code": codes[0]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("inválido ou já usado", resp.content.decode())
+        self.assertTrue(models.AuditLog.objects.filter(action="login_recovery").exists())
+
+    def test_regenerating_invalidates_previous_codes(self):
+        from accounts import recovery
+
+        user = _user(_company())
+        codes = self._activate(user)
+
+        resp = self.client.post("/seguranca/mfa/", {"action": "regenerate"})
+        self.assertEqual(resp.status_code, 200)
+        new_codes = list(resp.context["codes"])
+        self.assertEqual(len(new_codes), 8)
+
+        self.assertFalse(recovery.verify(user, codes[0]))
+        self.assertTrue(recovery.verify(user, new_codes[0]))
+
+    def test_recovery_is_rate_limited_like_totp(self):
+        user = _user(_company())
+        self._activate(user)
+
+        self._start_login(user)
+        for _ in range(5):
+            resp = self.client.post("/entrar/recuperacao/", {"code": "AAAAA-AAAAA"})
+            self.assertEqual(resp.status_code, 200)
+        resp = self.client.post("/entrar/recuperacao/", {"code": "AAAAA-AAAAA"})
+        self.assertEqual(resp.status_code, 429)
+
+
+class RetentionTests(TestCase):
+    def test_purge_deletes_only_access_logs_older_than_six_months(self):
+        from datetime import timedelta
+
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        company = _company()
+        old_access = models.AuditLog.objects.create(
+            company=company, action="login_ok", actor_email="a@example.com"
+        )
+        old_business = models.AuditLog.objects.create(
+            company=company, action="confirm", target="tx:1"
+        )
+        recent_access = models.AuditLog.objects.create(company=company, action="logout")
+        old = timezone.now() - timedelta(days=200)
+        models.AuditLog.objects.filter(pk__in=[old_access.pk, old_business.pk]).update(
+            created_at=old
+        )
+
+        call_command("purge_access_logs")
+
+        self.assertFalse(models.AuditLog.objects.filter(pk=old_access.pk).exists())
+        self.assertTrue(models.AuditLog.objects.filter(pk=old_business.pk).exists())
+        self.assertTrue(models.AuditLog.objects.filter(pk=recent_access.pk).exists())
