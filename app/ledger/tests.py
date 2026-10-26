@@ -15,6 +15,9 @@ from django.test import TestCase
 
 from . import models, services
 
+# Valor fictício, só para testes; centralizado para não parecer segredo real.
+_SENHA = "senha-forte-123"
+
 _CNPJ_SEQ = [0]
 _EMAIL_SEQ = [0]
 
@@ -30,7 +33,7 @@ def _user(company: models.Company, role: str = Role.OWNER, email: str | None = N
     if email is None:
         _EMAIL_SEQ[0] += 1
         email = f"user{_EMAIL_SEQ[0]}@example.com"
-    user = User.objects.create_user(email, "Dono Teste", "senha-forte-123")
+    user = User.objects.create_user(email, "Dono Teste", _SENHA)
     Membership.objects.create(user=user, company=company, role=role)
     return user
 
@@ -846,7 +849,7 @@ class AccountsTests(TestCase):
     def test_signup_creates_company_and_owner(self):
         resp = self.client.post(
             "/comecar/",
-            {"email": "nova@example.com", "name": "Nova Empresa", "password": "senha-forte-123"},
+            {"email": "nova@example.com", "name": "Nova Empresa", "password": _SENHA},
         )
         self.assertEqual(resp.status_code, 302)
         user = User.objects.get(email="nova@example.com")
@@ -865,7 +868,7 @@ class AccountsTests(TestCase):
         user = _user(company)
         resp = self.client.post(
             "/entrar/",
-            {"email": user.email, "password": "senha-forte-123"},
+            {"email": user.email, "password": _SENHA},
             headers={"HX-Request": "true"},
         )
         self.assertEqual(resp.status_code, 200)
@@ -880,7 +883,7 @@ class AccountsTests(TestCase):
         user.mfa_secret = secret
         user.save(update_fields=["mfa_secret"])
 
-        resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+        resp = self.client.post("/entrar/", {"email": user.email, "password": _SENHA})
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/entrar/mfa/", resp["Location"])
 
@@ -906,7 +909,7 @@ class AccountsTests(TestCase):
 
         c.post(
             "/comecar/",
-            {"email": "contador@example.com", "name": "Contador", "password": "senha-forte-123"},
+            {"email": "contador@example.com", "name": "Contador", "password": _SENHA},
         )
         contador = User.objects.get(email="contador@example.com")
         self.assertTrue(
@@ -1096,7 +1099,7 @@ class AuthDesignTests(TestCase):
         user = _user(company)
         user.mfa_secret = pyotp.random_base32()
         user.save(update_fields=["mfa_secret"])
-        self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+        self.client.post("/entrar/", {"email": user.email, "password": _SENHA})
 
         resp = self.client.get("/entrar/mfa/")
         self.assertContains(resp, "auth-split")
@@ -1281,7 +1284,7 @@ class SecurityHardeningTests(TestCase):
             resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-errada"})
             self.assertEqual(resp.status_code, 200)
 
-        resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+        resp = self.client.post("/entrar/", {"email": user.email, "password": _SENHA})
 
         self.assertEqual(resp.status_code, 429)
         self.assertIn("Muitas tentativas", resp.content.decode())
@@ -1293,7 +1296,7 @@ class SecurityHardeningTests(TestCase):
         user = _user(company)
         user.mfa_secret = pyotp.random_base32()
         user.save(update_fields=["mfa_secret"])
-        self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+        self.client.post("/entrar/", {"email": user.email, "password": _SENHA})
 
         for _ in range(5):
             resp = self.client.post("/entrar/mfa/", {"code": "999999"})
@@ -1421,16 +1424,12 @@ class LgpdTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertTrue(models.Company.objects.filter(pk=self.company.pk).exists())
 
-        resp = self.client.post(
-            "/conta/excluir/", {"password": "senha-forte-123", "confirm": "não"}
-        )
+        resp = self.client.post("/conta/excluir/", {"password": _SENHA, "confirm": "não"})
         self.assertEqual(resp.status_code, 400)
         self.assertTrue(models.Company.objects.filter(pk=self.company.pk).exists())
 
     def test_delete_removes_financial_data_and_keeps_access_log(self):
-        resp = self.client.post(
-            "/conta/excluir/", {"password": "senha-forte-123", "confirm": "EXCLUIR"}
-        )
+        resp = self.client.post("/conta/excluir/", {"password": _SENHA, "confirm": "EXCLUIR"})
 
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(models.Company.objects.filter(pk=self.company.pk).exists())

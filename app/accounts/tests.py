@@ -11,6 +11,8 @@ from ledger.models import AuditLog, Company
 from .cnpj import check_cnpj
 from .models import Membership, Role, User
 
+_SENHA = "senha-forte-123"  # fictícia, só para testes
+
 VALID = "11222333000181"
 
 
@@ -21,7 +23,7 @@ def _company(cnpj: str = "00000000000001") -> Company:
 def _owner(client: Client, company: Company) -> User:
     import pyotp
 
-    user = User.objects.create_user("dono@ex.com", "Dono", "senha-forte-123")
+    user = User.objects.create_user("dono@ex.com", "Dono", _SENHA)
     user.mfa_secret = pyotp.random_base32()
     user.save(update_fields=["mfa_secret"])
     Membership.objects.create(user=user, company=company, role=Role.OWNER)
@@ -141,7 +143,7 @@ class EmpresaViewTests(TestCase):
 
         c = Client()
         company2 = _company(cnpj="00000000000002")
-        user = User.objects.create_user("cont@ex.com", "Cont", "senha-forte-123")
+        user = User.objects.create_user("cont@ex.com", "Cont", _SENHA)
         user.mfa_secret = pyotp.random_base32()
         user.save(update_fields=["mfa_secret"])
         Membership.objects.create(user=user, company=company2, role=Role.ACCOUNTANT)
@@ -159,7 +161,7 @@ class SemEmpresaTests(TestCase):
         cache.clear()
         import pyotp
 
-        self.user = User.objects.create_superuser("admin@ex.com", "Admin", "senha-forte-123")
+        self.user = User.objects.create_superuser("admin@ex.com", "Admin", _SENHA)
         self.user.mfa_secret = pyotp.random_base32()
         self.user.save(update_fields=["mfa_secret"])
         self.client.force_login(self.user)
@@ -198,7 +200,7 @@ class SemEmpresaTests(TestCase):
         self.assertEqual(self.client.get("/fechamento/atual/").status_code, 200)
 
     def test_sem_mfa_nao_cadastra_antes_de_ativar(self):
-        user = User.objects.create_user("sem-mfa@ex.com", "Sem MFA", "senha-forte-123")
+        user = User.objects.create_user("sem-mfa@ex.com", "Sem MFA", _SENHA)
         self.client.force_login(user)
 
         resp = self.client.get("/empresa/")
