@@ -2,7 +2,7 @@
 # Configura o deploy por GitHub Actions com OIDC (sem segredo de longa duração).
 #
 # Uso:
-#   REPO=felipetp-ctrl/conciliador RG=rg-conciliador-prod APP=conciliador-prod-abc123 \
+#   REPO=felipetp-ctrl/conciliador RG=rg-conciliador-prod APP=conciliador-prod \
 #     bash deploy/azure-oidc.sh
 #
 # Cria (ou reaproveita) o App registration, a credencial federada para o branch

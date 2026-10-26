@@ -3,7 +3,7 @@
 # SQLite em /home. Idempotente: pode rodar de novo para ajustar configuração.
 #
 # Uso:
-#   RG=rg-conciliador-prod APP=conciliador-prod-abc123 PLAN=asp-conciliador-prod \
+#   RG=rg-conciliador-prod APP=conciliador-prod PLAN=asp-conciliador-b1 \
 #     bash deploy/azure-setup.sh
 #
 # Variáveis: RG, APP (obrigatórias), PLAN, LOCATION, SKU, RUNTIME.
@@ -12,7 +12,7 @@ set -euo pipefail
 
 : "${RG:?defina RG (ex.: rg-conciliador-prod)}"
 : "${APP:?defina APP (nome globalmente único, ex.: conciliador-prod-abc123)}"
-PLAN="${PLAN:-asp-conciliador-prod}"
+PLAN="${PLAN:-asp-conciliador-b1}"
 LOCATION="${LOCATION:-brazilsouth}"
 SKU="${SKU:-B1}"
 RUNTIME="${RUNTIME:-PYTHON:3.12}"

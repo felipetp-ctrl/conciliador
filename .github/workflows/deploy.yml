@@ -1,7 +1,8 @@
 name: Deploy
 
 # Publica só depois que o CI passar no main. O deploy manual (workflow_dispatch)
-# publica o commit atual do branch padrão.
+# publica o commit atual do branch padrão. Só roda quando a variável do repo
+# AZURE_DEPLOY_ENABLED=true (ligada depois de configurar o OIDC e os segredos).
 on:
   workflow_run:
     workflows: ["CI"]
@@ -21,8 +22,9 @@ jobs:
   deploy:
     name: Publicar no App Service
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      vars.AZURE_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

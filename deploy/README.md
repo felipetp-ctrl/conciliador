@@ -49,11 +49,14 @@ O script é idempotente: pode rodar de novo para ajustar configuração sem recr
 
 ```bash
 RG=rg-conciliador-prod
-APP=conciliador-prod-<sufixo>   # globalmente único; vira <APP>.azurewebsites.net
-PLAN=asp-conciliador-prod
+APP=conciliador-prod   # globalmente único; se estiver ocupado, use um sufixo curto
+PLAN=asp-conciliador-b1
 
-RG="$RG" APP="$APP" PLAN="$PLAN" LEGAL_CONTACT_EMAIL="privacidade@seudominio.com.br" bash deploy/azure-setup.sh
+RG="$RG" APP="$APP" PLAN="$PLAN" bash deploy/azure-setup.sh
 ```
+
+Antes de qualquer dado real, rode de novo com o contato LGPD (o endereço não fica no
+repositório): `LEGAL_CONTACT_EMAIL="seu-email@dominio.com"` no mesmo comando.
 
 Ele cria o resource group em **Brazil South**, o plano **B1 Linux**, o Web App
 **Python 3.12**, gera a `SECRET_KEY`, grava os App Settings, liga HTTPS/TLS 1.2,
@@ -124,17 +127,24 @@ Sem segredo de longa duração: o workflow troca um token do GitHub por credenci
 Azure. O `.github/workflows/deploy.yml` publica **depois que o CI passa no `main`**
 (e também por `workflow_dispatch`).
 
-1. Crie o repositório no GitHub e faça o push do branch `main`.
+1. O repositório é **`felipetp-ctrl/conciliador`** (privado) e o branch de deploy é
+   **`main`**. As variáveis `AZURE_RESOURCE_GROUP=rg-conciliador-prod` e
+   `AZURE_WEBAPP_NAME=conciliador-prod` já estão configuradas nele.
 2. Rode o script (precisa de permissão de admin no tenant):
 
    ```bash
-   REPO=<dono>/<repo> RG="$RG" APP="$APP" bash deploy/azure-oidc.sh
+   REPO=felipetp-ctrl/conciliador RG=rg-conciliador-prod APP=conciliador-prod bash deploy/azure-oidc.sh
    ```
 
    Ele cria o App registration, a credencial federada
-   `repo:<dono>/<repo>:ref:refs/heads/main` e dá **Contributor só no resource group**.
-3. Cole no repositório os comandos `gh secret set` / `gh variable set` que o script
-   imprime (ou configure em *Settings → Secrets and variables → Actions*).
+   `repo:felipetp-ctrl/conciliador:ref:refs/heads/main` e dá **Contributor só no resource group**.
+3. Rode os comandos `gh secret set` que o script imprime (ou configure em
+   *Settings → Secrets and variables → Actions*). Os deploys ficam desligados até você
+   ligar a chave:
+
+   ```bash
+   gh variable set AZURE_DEPLOY_ENABLED --repo felipetp-ctrl/conciliador --body true
+   ```
 4. Faça um push no `main`; o workflow empacota com `git archive` e chama
    `az webapp deploy`. No fim ele espera o `/health` responder 200 por até 5 minutos.
 
