@@ -56,18 +56,23 @@ SECRET_KEY="${EXISTING_SECRET:-$(openssl rand -base64 48 | tr -d '\n')}"
 echo "== app settings"
 # 169.254.129.1 é a origem dos health checks internos do App Service; sem ele o
 # Django responde 400 e o app é marcado como não saudável.
-az webapp config appsettings set -g "$RG" -n "$APP" --settings \
-  DEBUG=0 \
-  SECRET_KEY="$SECRET_KEY" \
-  SQLITE_PATH=/home/data/conciliador.sqlite3 \
-  STATIC_ROOT=/home/staticfiles \
-  ALLOWED_HOSTS="$APP.azurewebsites.net,169.254.129.1" \
-  CSRF_TRUSTED_ORIGINS="https://$APP.azurewebsites.net" \
-  WEB_CONCURRENCY=1 \
-  GUNICORN_THREADS=4 \
-  SCM_DO_BUILD_DURING_DEPLOYMENT=0 \
-  WEBSITES_PORT=8000 \
-  -o none
+SETTINGS=(
+  DEBUG=0
+  SECRET_KEY="$SECRET_KEY"
+  SQLITE_PATH=/home/data/conciliador.sqlite3
+  STATIC_ROOT=/home/staticfiles
+  ALLOWED_HOSTS="$APP.azurewebsites.net,169.254.129.1"
+  CSRF_TRUSTED_ORIGINS="https://$APP.azurewebsites.net"
+  WEB_CONCURRENCY=1
+  GUNICORN_THREADS=4
+  SCM_DO_BUILD_DURING_DEPLOYMENT=0
+  WEBSITES_PORT=8000
+)
+# Contato exibido em Privacidade/Termos; defina antes do primeiro deploy com dados reais.
+if [[ -n "${LEGAL_CONTACT_EMAIL:-}" ]]; then
+  SETTINGS+=("LEGAL_CONTACT_EMAIL=$LEGAL_CONTACT_EMAIL")
+fi
+az webapp config appsettings set -g "$RG" -n "$APP" --settings "${SETTINGS[@]}" -o none
 
 echo "== startup, HTTPS, TLS e health check"
 az webapp config set -g "$RG" -n "$APP" \

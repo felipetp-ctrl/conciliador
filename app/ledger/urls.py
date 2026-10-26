@@ -21,6 +21,7 @@ urlpatterns = [
         "demonstrativo/<slug:periodo_slug>/pdf/", views.demonstrativo_pdf, name="demonstrativo_pdf"
     ),
     path("item/<str:item_id>/", views.item_detalhe, name="item_detalhe"),
+    path("auditoria/", views.auditoria, name="auditoria"),
     path("item/<str:item_id>/confirmar/", views.item_confirmar, name="item_confirmar"),
     path("item/<str:item_id>/recusar/", views.item_recusar, name="item_recusar"),
     path("item/<str:item_id>/desfazer/", views.item_desfazer, name="item_desfazer"),
@@ -38,6 +39,8 @@ urlpatterns = [
     path("importacao/modelo-csv/", views.modelo_csv, name="modelo_csv"),
     path("importacao/duplicatas/revisar/", views.duplicatas_revisar, name="duplicatas_revisar"),
     path("landing/", views.landing, name="landing"),
+    path("privacidade/", views.privacy, name="privacy"),
+    path("termos/", views.terms, name="terms"),
     path("health", views.health, name="health"),
     path("health/", views.health, name="health_slash"),
 ]

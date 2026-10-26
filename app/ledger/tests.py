@@ -37,6 +37,11 @@ def _user(company: models.Company, role: str = Role.OWNER, email: str | None = N
 
 def _login(client, company: models.Company, role: str = Role.OWNER) -> User:
     user = _user(company, role)
+    # MFA é obrigatório; os testes de telas autenticadas já entram com o fator ativo.
+    import pyotp
+
+    user.mfa_secret = pyotp.random_base32()
+    user.save(update_fields=["mfa_secret"])
     client.force_login(user)
     return user
 
@@ -833,6 +838,11 @@ class UploadTests(TestCase):
 
 
 class AccountsTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
     def test_signup_creates_company_and_owner(self):
         resp = self.client.post(
             "/comecar/",
@@ -885,8 +895,7 @@ class AccountsTests(TestCase):
         from django.test import Client
 
         owner_company = _company()
-        owner = _user(owner_company)
-        self.client.force_login(owner)
+        _login(self.client, owner_company)
         self.client.post("/convites/", {"email": "contador@example.com"})
         invite = Invite.objects.get(email="contador@example.com")
 
@@ -1068,6 +1077,11 @@ class CompanyIsolationTests(TestCase):
 class AuthDesignTests(TestCase):
     """As telas de acesso usam a casca em duas colunas e carregam os assets certos."""
 
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
     def test_login_and_signup_use_split_layout(self):
         for url in ("/entrar/", "/comecar/"):
             resp = self.client.get(url)
@@ -1089,8 +1103,12 @@ class AuthDesignTests(TestCase):
         self.assertContains(resp, "Verificação em duas etapas")
 
     def test_post_login_pages_render(self):
+        import pyotp
+
         company = _company()
         user = _user(company)
+        user.mfa_secret = pyotp.random_base32()
+        user.save(update_fields=["mfa_secret"])
         self.client.force_login(user)
         for url in ("/empresa/", "/convites/", "/seguranca/mfa/"):
             self.assertEqual(self.client.get(url).status_code, 200)
@@ -1204,3 +1222,230 @@ class ExportTests(TestCase):
         self.assertIn("01/2026", html)
         html = self.client.get(f"/fechamento/{jan.pk}/?periodo={feb.pk}").content.decode()
         self.assertIn("02/2026", html)
+
+
+class SecurityHardeningTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def test_user_without_mfa_is_redirected_to_enrollment(self):
+        company = _company()
+        user = _user(company)
+        self.client.force_login(user)
+
+        resp = self.client.get("/fechamento/atual/")
+
+        self.assertRedirects(resp, "/seguranca/mfa/")
+
+    def test_enrollment_unlocks_the_panel(self):
+        import pyotp
+
+        company = _company()
+        user = _user(company)
+        self.client.force_login(user)
+
+        self.client.post("/seguranca/mfa/", {"action": "start"})
+        pending = self.client.session["mfa_pending_secret"]
+        resp = self.client.post(
+            "/seguranca/mfa/",
+            {"action": "confirm", "code": pyotp.TOTP(pending).now()},
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        user.refresh_from_db()
+        self.assertTrue(user.mfa_secret)
+        self.assertEqual(self.client.get("/fechamento/atual/").status_code, 200)
+
+    def test_mfa_cannot_be_disabled(self):
+        company = _company()
+        user = _login(self.client, company)
+        secret = user.mfa_secret
+
+        resp = self.client.post("/seguranca/mfa/", {"action": "disable"})
+
+        self.assertEqual(resp.status_code, 403)
+        user.refresh_from_db()
+        self.assertEqual(user.mfa_secret, secret)
+        self.assertTrue(secret)
+
+    def test_passwords_use_argon2(self):
+        user = _user(_company())
+        self.assertTrue(user.password.startswith("argon2$"))
+
+    def test_login_is_rate_limited_by_email(self):
+        company = _company()
+        user = _user(company)
+        for _ in range(5):
+            resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-errada"})
+            self.assertEqual(resp.status_code, 200)
+
+        resp = self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn("Muitas tentativas", resp.content.decode())
+
+    def test_mfa_code_is_rate_limited(self):
+        import pyotp
+
+        company = _company()
+        user = _user(company)
+        user.mfa_secret = pyotp.random_base32()
+        user.save(update_fields=["mfa_secret"])
+        self.client.post("/entrar/", {"email": user.email, "password": "senha-forte-123"})
+
+        for _ in range(5):
+            resp = self.client.post("/entrar/mfa/", {"code": "999999"})
+            self.assertEqual(resp.status_code, 200)
+        resp = self.client.post("/entrar/mfa/", {"code": "999999"})
+
+        self.assertEqual(resp.status_code, 429)
+
+    def test_csp_header_is_present(self):
+        resp = self.client.get("/entrar/")
+
+        csp = resp["Content-Security-Policy"]
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("script-src 'self'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_session_expires_by_inactivity(self):
+        from django.conf import settings
+
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 8 * 60 * 60)
+        self.assertTrue(settings.SESSION_SAVE_EVERY_REQUEST)
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+        self.assertEqual(settings.SESSION_COOKIE_SAMESITE, "Lax")
+
+
+class AuditTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.company = _company()
+        self.account = _account(self.company)
+        self.user = _login(self.client, self.company)
+
+    def test_confirm_writes_audit_entry(self):
+        _tx(
+            self.account,
+            190000,
+            "PIX REC 45723174000110 ALFA",
+            date(2026, 10, 21),
+            documents=["45723174000110"],
+            key="k-audit",
+        )
+        _item(self.company, 190000, date(2026, 10, 20), counterpart_doc="45723174000110")
+        sug = next(
+            i for i in services.reconcile(self.company)["items"] if i["status"] == "a_confirmar"
+        )
+
+        self.client.post(f"/item/{sug['id']}/confirmar/")
+
+        entry = models.AuditLog.objects.get(action="confirm")
+        self.assertEqual(entry.company, self.company)
+        self.assertEqual(entry.actor, self.user)
+        self.assertEqual(entry.target, sug["id"])
+
+    def test_import_and_export_write_audit_entries(self):
+        csv = (
+            b"tipo;valor;vencimento;contraparte_nome;contraparte_documento;"
+            b"documento_numero;descricao\n"
+            b"pagar;250,90;10/11/2026;Fornecedor Exemplo SA;12.345.678/0001-95;2002;Compra\n"
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.client.post(
+            "/importacao/enviar/csv/", {"files": SimpleUploadedFile("contas.csv", csv)}
+        )
+        self.client.get("/demonstrativo/atual/csv/")
+
+        self.assertTrue(models.AuditLog.objects.filter(action="import").exists())
+        self.assertTrue(models.AuditLog.objects.filter(action="export").exists())
+
+    def test_audit_page_lists_entries_for_owner_only(self):
+        models.AuditLog.objects.create(company=self.company, action="confirm", target="tx:1")
+
+        resp = self.client.get("/auditoria/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "confirmou vínculo")
+
+        from django.test import Client
+
+        other = Client()
+        _login(other, self.company, Role.ACCOUNTANT)
+        self.assertEqual(other.get("/auditoria/").status_code, 403)
+
+
+class LgpdTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.company = _company()
+        self.account = _account(self.company)
+        self.user = _login(self.client, self.company)
+        _tx(self.account, 12345, "PIX SINTETICO", date(2026, 1, 1), key="k-lgpd")
+        _item(self.company, 12345, date(2026, 1, 1), number="nº LGPD")
+
+    def test_export_contains_all_data_without_secrets(self):
+        import json
+
+        resp = self.client.get("/conta/exportar/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("attachment", resp["Content-Disposition"])
+        data = json.loads(resp.content)
+        self.assertEqual(data["user"]["email"], self.user.email)
+        self.assertEqual(data["companies"][0]["cnpj"], self.company.cnpj)
+        self.assertEqual(
+            data["companies"][0]["accounts"][0]["transactions"][0]["memo"], "PIX SINTETICO"
+        )
+        self.assertEqual(data["companies"][0]["items"][0]["amount_cents"], 12345)
+        body = resp.content.decode()
+        self.assertNotIn("password", body)
+        self.assertNotIn("mfa_secret", body)
+
+    def test_accountant_cannot_export(self):
+        from django.test import Client
+
+        c = Client()
+        _login(c, self.company, Role.ACCOUNTANT)
+        self.assertEqual(c.get("/conta/exportar/").status_code, 403)
+
+    def test_delete_requires_password_and_phrase(self):
+        resp = self.client.post("/conta/excluir/", {"password": "errada", "confirm": "EXCLUIR"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(models.Company.objects.filter(pk=self.company.pk).exists())
+
+        resp = self.client.post(
+            "/conta/excluir/", {"password": "senha-forte-123", "confirm": "não"}
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(models.Company.objects.filter(pk=self.company.pk).exists())
+
+    def test_delete_removes_financial_data_and_keeps_access_log(self):
+        resp = self.client.post(
+            "/conta/excluir/", {"password": "senha-forte-123", "confirm": "EXCLUIR"}
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(models.Company.objects.filter(pk=self.company.pk).exists())
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(models.BankTransaction.objects.exists())
+        entry = models.AuditLog.objects.get(action="account_deleted")
+        self.assertIsNone(entry.company)
+        self.assertIsNone(entry.actor)
+        self.assertEqual(entry.target, self.company.cnpj)
+
+    def test_privacy_and_terms_pages_render(self):
+        for url, text in (
+            ("/privacidade/", "Política de Privacidade"),
+            ("/termos/", "Termos de Uso"),
+        ):
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, text)

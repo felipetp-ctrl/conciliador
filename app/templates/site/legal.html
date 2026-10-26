@@ -1,0 +1,17 @@
+{% load static conciliador_ds %}<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}conciliador{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'styles.css' %}">
+<link rel="stylesheet" href="{% static 'ds/ds.css' %}">
+</head>
+<body class="auth">
+<div class="auth__wrap" style="max-width:860px">
+  <a class="site-nav__brand" href="{% url 'landing' %}">conciliador</a>
+  <div class="card auth__card" style="max-width:860px">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+</body>
+</html>

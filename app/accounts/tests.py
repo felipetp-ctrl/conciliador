@@ -6,7 +6,7 @@ import urllib.error
 from unittest import mock
 
 from django.test import Client, TestCase
-from ledger.models import Company
+from ledger.models import AuditLog, Company
 
 from .cnpj import check_cnpj
 from .models import Membership, Role, User
@@ -19,7 +19,11 @@ def _company(cnpj: str = "00000000000001") -> Company:
 
 
 def _owner(client: Client, company: Company) -> User:
+    import pyotp
+
     user = User.objects.create_user("dono@ex.com", "Dono", "senha-forte-123")
+    user.mfa_secret = pyotp.random_base32()
+    user.save(update_fields=["mfa_secret"])
     Membership.objects.create(user=user, company=company, role=Role.OWNER)
     client.force_login(user)
     return user
@@ -133,10 +137,70 @@ class EmpresaViewTests(TestCase):
         self.assertNotEqual(self.company.cnpj, VALID)
 
     def test_accountant_cannot_edit(self):
+        import pyotp
+
         c = Client()
         company2 = _company(cnpj="00000000000002")
         user = User.objects.create_user("cont@ex.com", "Cont", "senha-forte-123")
+        user.mfa_secret = pyotp.random_base32()
+        user.save(update_fields=["mfa_secret"])
         Membership.objects.create(user=user, company=company2, role=Role.ACCOUNTANT)
         c.force_login(user)
         resp = c.get("/empresa/")
         self.assertEqual(resp.status_code, 403)
+
+
+class SemEmpresaTests(TestCase):
+    """Deploy vazio: o superusuário sem empresa cadastra a primeira antes de usar o painel."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        import pyotp
+
+        self.user = User.objects.create_superuser("admin@ex.com", "Admin", "senha-forte-123")
+        self.user.mfa_secret = pyotp.random_base32()
+        self.user.save(update_fields=["mfa_secret"])
+        self.client.force_login(self.user)
+
+    def test_painel_redireciona_para_cadastro_da_empresa(self):
+        resp = self.client.get("/fechamento/atual/")
+
+        self.assertRedirects(resp, "/empresa/")
+
+    def test_pagina_de_empresa_abre_em_modo_de_cadastro(self):
+        resp = self.client.get("/empresa/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Cadastre sua empresa")
+
+    @mock.patch(
+        "accounts.cnpj._fetch",
+        return_value=(
+            200,
+            {
+                "razao_social": "Empresa Teste Ltda",
+                "situacao_cadastral": 1,
+                "descricao_situacao_cadastral": "Ativa",
+            },
+        ),
+    )
+    def test_cria_primeira_empresa_e_entra_no_painel(self, _fetch):
+        resp = self.client.post("/empresa/", {"name": "Minha Empresa", "cnpj": VALID})
+
+        self.assertEqual(resp.status_code, 302)
+        company = Company.objects.get(cnpj=VALID)
+        self.assertTrue(
+            Membership.objects.filter(user=self.user, company=company, role=Role.OWNER).exists()
+        )
+        self.assertTrue(AuditLog.objects.filter(action="company_created", company=company).exists())
+        self.assertEqual(self.client.get("/fechamento/atual/").status_code, 200)
+
+    def test_sem_mfa_nao_cadastra_antes_de_ativar(self):
+        user = User.objects.create_user("sem-mfa@ex.com", "Sem MFA", "senha-forte-123")
+        self.client.force_login(user)
+
+        resp = self.client.get("/empresa/")
+
+        self.assertRedirects(resp, "/seguranca/mfa/")

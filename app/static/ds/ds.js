@@ -29,4 +29,9 @@
   function init(root) { bindDropzones(root); bindRows(root); bindTabs(root); }
   document.addEventListener('DOMContentLoaded', function () { init(document); });
   document.addEventListener('htmx:load', function (ev) { init(ev.target); });
+  // Selects que enviam o formulário ao mudar (sem onchange inline, bloqueado pela CSP).
+  document.addEventListener('change', function (ev) {
+    var el = ev.target.closest('[data-auto-submit]');
+    if (el && el.form) el.form.requestSubmit();
+  });
 })();

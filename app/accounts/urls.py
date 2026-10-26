@@ -11,5 +11,7 @@ urlpatterns = [
     path("seguranca/mfa/", views.mfa_setup, name="mfa_setup"),
     path("empresa/", views.empresa, name="empresa"),
     path("convites/", views.convites, name="convites"),
+    path("conta/exportar/", views.exportar_dados, name="exportar_dados"),
+    path("conta/excluir/", views.excluir_conta, name="excluir_conta"),
     path("trocar-empresa/", views.trocar_empresa, name="trocar_empresa"),
 ]

@@ -1,8 +1,8 @@
 {% extends "accounts/auth_card_base.html" %}{% load conciliador_ds %}
-{% block title %}Empresa — conciliador{% endblock %}
+{% block title %}{% if new_company %}Sua empresa{% else %}Empresa{% endif %} — conciliador{% endblock %}
 {% block content %}
-<h1 class="page-header__title" style="font-size:22px">Dados da empresa</h1>
-<p class="faint" style="margin:4px 0 20px">Precisamos do CNPJ real para ler as suas notas e decidir o que é a receber e a pagar.</p>
+<h1 class="page-header__title" style="font-size:22px">{% if new_company %}Cadastre sua empresa{% else %}Dados da empresa{% endif %}</h1>
+<p class="faint" style="margin:4px 0 20px">{% if new_company %}Para começar, informe o nome e o CNPJ real. É com ele que lemos as suas notas e decidimos o que é a receber e a pagar.{% else %}Precisamos do CNPJ real para ler as suas notas e decidir o que é a receber e a pagar.{% endif %}</p>
 
 {% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível salvar" body=error %}{% endif %}
 {% if warning %}{% include "ds/alert.html" with tone="pending" title="Salvo — pendente de confirmação" body=warning %}{% endif %}
@@ -15,11 +15,20 @@
 {% endif %}
 
 <form class="stack" method="post">{% csrf_token %}
-  <div class="field"><label class="field__label" for="name">Nome da empresa</label><div class="field__control"><input class="field__input" id="name" name="name" value="{{ company.name }}" required></div></div>
-  <div class="field"><label class="field__label" for="cnpj">CNPJ</label><div class="field__control"><input class="field__input" id="cnpj" name="cnpj" value="{{ company.cnpj }}" placeholder="12.345.678/0001-95" required></div></div>
+  <div class="field"><label class="field__label" for="name">Nome da empresa</label><div class="field__control"><input class="field__input" id="name" name="name" value="{{ company.name|default:'' }}" required></div></div>
+  <div class="field"><label class="field__label" for="cnpj">CNPJ</label><div class="field__control"><input class="field__input" id="cnpj" name="cnpj" value="{{ company.cnpj|default:'' }}" placeholder="12.345.678/0001-95" required></div></div>
   <div class="muted" style="font-size:12.5px">Validamos o dígito e consultamos a Receita Federal na hora.</div>
-  <div><button class="btn btn--primary" type="submit" style="width:100%">{% icon "shield-check" 16 %}Salvar e verificar</button></div>
+  <div><button class="btn btn--primary" type="submit" style="width:100%">{% icon "shield-check" 16 %}{% if new_company %}Criar empresa e continuar{% else %}Salvar e verificar{% endif %}</button></div>
 </form>
 
+{% if company %}
 <p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'fechamento' 'atual' %}">{% icon "arrow-left" 14 %}Voltar ao fechamento</a></p>
+
+<section class="stack" style="margin-top:24px;gap:8px">
+  <div class="micro">Seus dados</div>
+  <a class="auth-link" href="{% url 'exportar_dados' %}">Exportar todos os dados (JSON)</a>
+  <a class="auth-link" href="{% url 'auditoria' %}">Ver log de auditoria</a>
+  <a class="auth-link" href="{% url 'excluir_conta' %}" style="color:var(--late, #b42318)">Excluir minha conta</a>
+</section>
+{% endif %}
 {% endblock %}

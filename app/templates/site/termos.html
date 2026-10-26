@@ -1,0 +1,35 @@
+{% extends "site/legal.html" %}{% load conciliador_ds %}
+{% block title %}Termos de uso — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:26px">Termos de Uso</h1>
+<p class="faint">Versão de 25 de outubro de 2026.</p>
+
+<p>Estes termos regem o uso do <b>conciliador</b>, aplicação que confronta extratos bancários com documentos fiscais e contas a pagar/receber para apoiar o fechamento financeiro da empresa. Ao criar uma conta, você concorda com eles.</p>
+
+<h2 class="h2" style="margin-top:28px">1. Conta e acesso</h2>
+<p>A conta é pessoal e intransferível. Você é responsável por manter a senha em sigilo e por ativar a verificação em duas etapas, que é obrigatória. O titular da empresa pode convidar contadores com acesso somente leitura. Avise imediatamente se suspeitar de acesso indevido.</p>
+
+<h2 class="h2" style="margin-top:28px">2. O que o serviço faz — e o que não faz</h2>
+<p>O conciliador lê os arquivos que você envia, sugere vínculos entre lançamentos e documentos e mostra o que está só no banco, só nos documentos ou divergente. <b>Nada é conciliado sem a sua confirmação.</b> O serviço é uma ferramenta de apoio: não substitui a contabilidade, a auditoria, a consultoria tributária nem a conferência dos documentos originais. Não emitimos parecer contábil, fiscal ou jurídico.</p>
+
+<h2 class="h2" style="margin-top:28px">3. Seus dados e suas responsabilidades</h2>
+<p>Você declara que tem base legal e autorização para enviar os arquivos e que eles não contêm dados de terceiros obtidos de forma ilícita. Você mantém a propriedade dos dados. Nós os tratamos conforme a <a href="{% url 'privacy' %}">Política de Privacidade</a> e só os usamos para prestar o serviço.</p>
+
+<h2 class="h2" style="margin-top:28px">4. Uso aceitável</h2>
+<p>É proibido tentar acessar dados de outra empresa, contornar a autenticação, sobrecarregar o serviço, enviar arquivos maliciosos, fazer engenharia reversa para burlar limites ou usar o serviço para atividade ilegal. Podemos suspender a conta em caso de risco à segurança ou a terceiros.</p>
+
+<h2 class="h2" style="margin-top:28px">5. Disponibilidade e limitações</h2>
+<p>Buscamos manter o serviço disponível, mas ele pode passar por manutenção e eventual indisponibilidade. O piloto roda em uma única instância, com backup diário; não há garantia de continuidade absoluta nem de recuperação de dados posteriores ao último backup. Na máxima extensão permitida pela lei, não respondemos por lucros cessantes ou danos indiretos decorrentes de decisões tomadas com base no demonstrativo.</p>
+
+<h2 class="h2" style="margin-top:28px">6. Encerramento</h2>
+<p>Você pode excluir a conta a qualquer momento em <b>Empresa → Excluir minha conta</b>, depois de exportar os dados se quiser. A exclusão apaga os dados financeiros e da empresa; os registros de acesso são mantidos por 6 meses, sem conteúdo financeiro, por obrigação legal.</p>
+
+<h2 class="h2" style="margin-top:28px">7. Alterações</h2>
+<p>Podemos atualizar estes termos. Mudanças relevantes serão avisadas no aplicativo; o uso continuado após o aviso vale como aceite da nova versão.</p>
+
+<h2 class="h2" style="margin-top:28px">8. Lei e foro</h2>
+<p>Aplicam-se as leis brasileiras, em especial o Código Civil, o Marco Civil da Internet e a LGPD. Fica eleito o foro do domicílio do consumidor quando aplicável; nos demais casos, fica eleito o foro da comarca do responsável pelo serviço.</p>
+
+<p class="muted" style="font-size:12.5px;margin-top:28px">Documento em revisão jurídica antes da entrada em produção com dados de clientes.</p>
+<p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'landing' %}">{% icon "arrow-left" 14 %}Voltar ao site</a> · <a href="{% url 'privacy' %}">Política de privacidade</a></p>
+{% endblock %}

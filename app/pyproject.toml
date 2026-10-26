@@ -8,6 +8,7 @@ dependencies = [
     "django>=5.1,<6.0",
     "conciliador-core",
     "pyotp>=2.9,<3",
+    "argon2-cffi>=23.1,<26",
     "fpdf2>=2.8,<3",
     "psycopg[binary]>=3.2,<4",
     "whitenoise>=6.7,<7",

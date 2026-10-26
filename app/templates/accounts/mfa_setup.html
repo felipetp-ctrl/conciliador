@@ -2,19 +2,19 @@
 {% block title %}Segurança — conciliador{% endblock %}
 {% block content %}
 <h1 class="page-header__title" style="font-size:22px">Segurança</h1>
-<p class="faint" style="margin:4px 0 20px">Verificação em duas etapas (TOTP) protege o acesso à sua conta.</p>
+<p class="faint" style="margin:4px 0 20px">A verificação em duas etapas (TOTP) é obrigatória para proteger o acesso à sua conta.</p>
 
 {% if error %}{% include "ds/alert.html" with tone="late" title="Código inválido" body=error %}{% endif %}
 
-{% if user.mfa_secret %}
+{% if user.mfa_secret and not pending %}
   {% include "ds/alert.html" with tone="ok" title="Verificação em duas etapas ativa" body="Ao entrar, você informa o código do seu aplicativo autenticador." %}
   <form method="post" style="margin-top:16px">{% csrf_token %}
-    <input type="hidden" name="action" value="disable">
-    <button class="btn btn--ghost" type="submit">Desativar</button>
+    <input type="hidden" name="action" value="start">
+    <button class="btn btn--ghost" type="submit">Trocar dispositivo</button>
   </form>
 
 {% elif pending %}
-  <p style="margin:0">Escaneie o QR code (ou digite o segredo) no seu aplicativo autenticador e confirme com o código de 6 dígitos.</p>
+  <p style="margin:0">Abra o aplicativo autenticador e cadastre o segredo abaixo (ou cole o endereço <span class="mono mono--12">otpauth://</span>). Depois confirme com o código de 6 dígitos.</p>
   <div class="mono mono--12" style="word-break:break-all;margin:12px 0;background:var(--surface-sunken);padding:12px;border-radius:8px">{{ otpauth }}</div>
   <form class="stack" method="post">{% csrf_token %}
     <input type="hidden" name="action" value="confirm">
@@ -23,12 +23,15 @@
   </form>
 
 {% else %}
-  {% include "ds/alert.html" with tone="pending" title="Verificação em duas etapas desativada" body="Recomendamos ativar para proteger o fechamento da sua empresa." %}
+  {% include "ds/alert.html" with tone="late" title="Ative a verificação em duas etapas" body="Sem ela, o acesso ao fechamento da empresa fica bloqueado." %}
   <form method="post" style="margin-top:16px">{% csrf_token %}
     <input type="hidden" name="action" value="start">
-    <button class="btn btn--primary" type="submit">{% icon "shield-check" 16 %}Ativar</button>
+    <button class="btn btn--primary" type="submit">{% icon "shield-check" 16 %}Ativar agora</button>
   </form>
 {% endif %}
 
-<p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'fechamento' 'atual' %}">{% icon "arrow-left" 14 %}Voltar ao fechamento</a></p>
+<p class="muted" style="font-size:13px;margin-top:20px">
+  {% if user.mfa_secret %}<a href="{% url 'fechamento' 'atual' %}">{% icon "arrow-left" 14 %}Voltar ao fechamento</a>{% endif %}
+</p>
+{% if not user.mfa_secret %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn--ghost btn--sm" type="submit">Sair</button></form>{% endif %}
 {% endblock %}

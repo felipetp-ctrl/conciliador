@@ -15,13 +15,14 @@ from conciliador_core import ParseError
 from conciliador_core.money import parse_brl_amount
 from conciliador_core.parsers._limits import MAX_FILE_BYTES, MAX_XML_BYTES
 from conciliador_ui.landing_context import landing_context
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from . import export, ingest, models, services
+from . import audit, export, ingest, models, services
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +399,7 @@ def item_confirmar(request: HttpRequest, item_id: str):
     conta_id = _confirm(company, item, request.POST.get("doc_id"), _who(request))
     if conta_id is None:
         return HttpResponse(status=404)
+    audit.log(request, "confirm", company=company, target=item_id)
     return HttpResponse(headers={"HX-Redirect": _back(conta_id)})
 
 
@@ -414,6 +416,7 @@ def item_recusar(request: HttpRequest, item_id: str):
     if tx is None or it is None:
         return HttpResponse(status=404)
     models.RejectedLink.objects.get_or_create(company=company, transaction=tx, item=it)
+    audit.log(request, "reject", company=company, target=item_id)
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
@@ -429,6 +432,7 @@ def item_desfazer(request: HttpRequest, item_id: str):
     except (ValueError, models.Link.DoesNotExist):
         return HttpResponse(status=404)
     conta_id = services.unlink_group(link)
+    audit.log(request, "unlink", company=link.company, target=item_id)
     return HttpResponse(headers={"HX-Redirect": _back(conta_id)})
 
 
@@ -463,6 +467,7 @@ def item_classificar(request: HttpRequest, item_id: str):
 
     tx.classified_at = timezone.now()
     tx.save()
+    audit.log(request, "classify", company=company, target=item_id, detail=kind)
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
@@ -488,6 +493,7 @@ def item_desclassificar(request: HttpRequest, item_id: str):
             "transfer_counterpart",
         ]
     )
+    audit.log(request, "unclassify", company=company, target=item_id)
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 
 
@@ -499,10 +505,14 @@ def aprovar_lote(request: HttpRequest):
     conta, _ = _conta(request, company)
     ctx = services.reconcile(company, conta)
     who = _who(request)
+    confirmed = 0
     for item in ctx["items"]:
         if item["status"] != "a_confirmar" or item.get("candidates"):
             continue
-        _confirm(company, item, who=who)
+        if _confirm(company, item, who=who) is not None:
+            confirmed += 1
+    if confirmed:
+        audit.log(request, "confirm", company=company, detail=f"lote: {confirmed} vínculo(s)")
     return HttpResponse(headers={"HX-Redirect": _back(conta.pk if conta else None)})
 
 
@@ -527,6 +537,7 @@ def abrir_periodo(request: HttpRequest):
     if models.Period.objects.filter(account=conta, start__lte=end, end__gte=start).exists():
         return HttpResponse(status=409)
     models.Period.objects.create(account=conta, start=start, end=end, opening_balance_cents=opening)
+    audit.log(request, "period_open", company=company, target=str(conta.pk), detail=month)
     return HttpResponse(headers={"HX-Redirect": _back(conta.pk)})
 
 
@@ -548,6 +559,7 @@ def fechar_periodo(request: HttpRequest):
     period.closed = True
     period.closed_at = timezone.now()
     period.save()
+    audit.log(request, "period_close", company=company, target=str(period.pk), detail=period.label)
     return HttpResponse(headers={"HX-Redirect": _back(conta.pk)})
 
 
@@ -582,6 +594,53 @@ def _importacoes_recentes(company: models.Company, limit: int = 20) -> list[dict
 
 @login_required
 @_dono_required
+def auditoria(request: HttpRequest):
+    """Log de auditoria da empresa, visível ao titular."""
+    ctx, company = _base(request, "auditoria")
+    labels = {
+        "login_ok": "entrou",
+        "login_failed": "tentou entrar",
+        "login_blocked": "bloqueado por tentativas",
+        "login_first_factor_ok": "primeiro fator correto, aguardando MFA",
+        "mfa_failed": "errou o código MFA",
+        "mfa_blocked": "bloqueado no MFA",
+        "mfa_enabled": "ativou o MFA",
+        "logout": "saiu",
+        "signup": "criou a conta",
+        "company_created": "cadastrou a empresa",
+        "company_updated": "atualizou a empresa",
+        "invite_created": "convidou contador",
+        "invite_accepted": "aceitou convite",
+        "import": "importou arquivo",
+        "confirm": "confirmou vínculo",
+        "reject": "recusou vínculo",
+        "unlink": "desfez vínculo",
+        "classify": "classificou lançamento",
+        "unclassify": "desclassificou lançamento",
+        "manual_link": "criou vínculo manual",
+        "export": "exportou demonstrativo",
+        "data_export": "exportou todos os dados",
+        "account_deleted": "excluiu a conta",
+        "account_delete_failed": "tentou excluir a conta",
+        "period_open": "abriu período",
+        "period_close": "fechou período",
+    }
+    rows = [
+        {
+            "at": entry.created_at,
+            "who": entry.actor_email or (entry.actor.name if entry.actor else ""),
+            "action": labels.get(entry.action, entry.action),
+            "target": entry.target,
+            "detail": entry.detail,
+        }
+        for entry in models.AuditLog.objects.filter(company=company).select_related("actor")[:200]
+    ]
+    ctx["registros"] = rows
+    return render(request, "app/auditoria.html", ctx)
+
+
+@login_required
+@_dono_required
 def importacao_enviar(request: HttpRequest, kind: str):
     """Recebe um arquivo (OFX/NF-e/NFS-e/CSV), lê e grava; devolve o dropzone atualizado."""
     company = _company_of(request)
@@ -608,32 +667,31 @@ def importacao_enviar(request: HttpRequest, kind: str):
     return render(request, "ds/dropzone.html", {"source": source, "job": job})
 
 
+def _upload_error(
+    company: models.Company, kind: str, f, request: HttpRequest, message: str
+) -> dict:
+    models.ImportJob.objects.create(
+        company=company,
+        source=kind,
+        file_name=f.name,
+        state="error",
+        error=message,
+        created_by=_who(request),
+    )
+    audit.log(request, "import", company=company, target=f.name, detail=f"erro: {message}")
+    return {"state": "error", "error": message}
+
+
 def _process_upload(company: models.Company, kind: str, f, request: HttpRequest) -> dict:
     # O parser também recusa arquivos grandes, mas só depois de ler tudo para a memória.
     # Checar o tamanho antes evita que um upload enorme derrube o processo.
     limit = MAX_XML_BYTES if kind in ("nfe", "nfse") else MAX_FILE_BYTES
     too_large = "Arquivo maior que o limite (10 MB; XML 2 MB)."
     if f.size is not None and f.size > limit:
-        models.ImportJob.objects.create(
-            company=company,
-            source=kind,
-            file_name=f.name,
-            state="error",
-            error=too_large,
-            created_by=_who(request),
-        )
-        return {"state": "error", "error": too_large}
+        return _upload_error(company, kind, f, request, too_large)
     data = f.read(limit + 1)
     if len(data) > limit:
-        models.ImportJob.objects.create(
-            company=company,
-            source=kind,
-            file_name=f.name,
-            state="error",
-            error=too_large,
-            created_by=_who(request),
-        )
-        return {"state": "error", "error": too_large}
+        return _upload_error(company, kind, f, request, too_large)
     cnpj = company.cnpj if kind in ("nfe", "nfse") else None
     if kind == "ofx":
         report = ingest.ingest_ofx(data, f.name, company)
@@ -669,16 +727,9 @@ def _process_upload(company: models.Company, kind: str, f, request: HttpRequest)
             result=result,
             created_by=_who(request),
         )
+        audit.log(request, "import", company=company, target=f.name, detail=result)
         return {"state": "done", "result": result}
-    models.ImportJob.objects.create(
-        company=company,
-        source=kind,
-        file_name=f.name,
-        state="error",
-        error=report["message"],
-        created_by=_who(request),
-    )
-    return {"state": "error", "error": report["message"]}
+    return _upload_error(company, kind, f, request, report["message"])
 
 
 def _upload_summary(jobs: list[dict]) -> str:
@@ -694,6 +745,22 @@ def _upload_summary(jobs: list[dict]) -> str:
 
 def landing(request: HttpRequest):
     return render(request, "site/landing.html", landing_context())
+
+
+def privacy(request: HttpRequest):
+    return render(
+        request,
+        "site/privacidade.html",
+        {"legal_contact": settings.LEGAL_CONTACT_EMAIL},
+    )
+
+
+def terms(request: HttpRequest):
+    return render(
+        request,
+        "site/termos.html",
+        {"legal_contact": settings.LEGAL_CONTACT_EMAIL},
+    )
 
 
 def health(request: HttpRequest):
@@ -722,7 +789,8 @@ def demonstrativo_lista(request: HttpRequest, periodo_slug: str):
 
 @login_required
 def demonstrativo_csv(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento", periodo_slug)
+    ctx, company = _base(request, "fechamento", periodo_slug)
+    audit.log(request, "export", company=company, target="demonstrativo", detail="csv")
     response = HttpResponse(export.csv_bytes(ctx), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{export.filename(ctx, "csv")}"'
     return response
@@ -730,7 +798,8 @@ def demonstrativo_csv(request: HttpRequest, periodo_slug: str):
 
 @login_required
 def demonstrativo_pdf(request: HttpRequest, periodo_slug: str):
-    ctx, _ = _base(request, "fechamento", periodo_slug)
+    ctx, company = _base(request, "fechamento", periodo_slug)
+    audit.log(request, "export", company=company, target="demonstrativo", detail="pdf")
     response = HttpResponse(export.pdf_bytes(ctx), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{export.filename(ctx, "pdf")}"'
     return response
@@ -762,6 +831,13 @@ def vinculo_manual(request: HttpRequest):
             "reason": reason,
             "created_by": _who(request),
         },
+    )
+    audit.log(
+        request,
+        "manual_link",
+        company=company,
+        target=f"{tx.pk}:{it.pk}",
+        detail=mode,
     )
     return HttpResponse(headers={"HX-Redirect": _back(tx.account_id)})
 

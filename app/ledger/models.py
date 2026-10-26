@@ -214,3 +214,32 @@ class Link(models.Model):
 
     def __str__(self) -> str:
         return f"{self.transaction_id} ↔ {self.item_id}"
+
+
+class AuditLog(models.Model):
+    """Registro append-only do que aconteceu na empresa.
+
+    Não há tela de edição nem de exclusão. Ao apagar a empresa, o vínculo vira nulo e o
+    registro de acesso continua (sem conteúdo financeiro), como pede o Marco Civil.
+    """
+
+    company = models.ForeignKey(
+        Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="audit"
+    )
+    actor = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    actor_email = models.EmailField(blank=True, default="")
+    action = models.CharField(max_length=40)
+    target = models.CharField(max_length=160, blank=True, default="")
+    detail = models.CharField(max_length=255, blank=True, default="")
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "registro de auditoria"
+        verbose_name_plural = "registros de auditoria"
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%Y-%m-%d %H:%M} {self.action} {self.target}"

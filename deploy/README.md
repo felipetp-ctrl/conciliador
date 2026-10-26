@@ -52,7 +52,7 @@ RG=rg-conciliador-prod
 APP=conciliador-prod-<sufixo>   # globalmente único; vira <APP>.azurewebsites.net
 PLAN=asp-conciliador-prod
 
-RG="$RG" APP="$APP" PLAN="$PLAN" bash deploy/azure-setup.sh
+RG="$RG" APP="$APP" PLAN="$PLAN" LEGAL_CONTACT_EMAIL="privacidade@seudominio.com.br" bash deploy/azure-setup.sh
 ```
 
 Ele cria o resource group em **Brazil South**, o plano **B1 Linux**, o Web App
@@ -78,6 +78,9 @@ O script já define tudo. Para conferir ou ajustar à mão:
 | `GUNICORN_THREADS` | `4` |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `0` |
 | `WEBSITES_PORT` | `8000` |
+| `LEGAL_CONTACT_EMAIL` | e-mail do responsável pelo tratamento (aparece em Privacidade/Termos) |
+| `SESSION_COOKIE_AGE` | opcional; padrão `28800` (8 horas de inatividade) |
+| `MAX_UPLOAD_BYTES` | opcional; padrão `10485760` (10 MB) |
 
 O `169.254.129.1` é a origem dos health checks internos do App Service; sem ele o
 Django responde 400 e o app é marcado como não saudável. O `/health` responde
@@ -111,6 +114,10 @@ az webapp ssh -g "$RG" -n "$APP"
 cd /home/site/wwwroot && /home/venv/bin/python app/manage.py createsuperuser
 ```
 
+No primeiro acesso, entre com esse usuário, **ative a verificação em duas etapas** e
+cadastre a primeira empresa (nome + CNPJ). O painel só abre depois disso; não há dados
+de demonstração em produção.
+
 ## 5. Deploy contínuo (GitHub Actions + OIDC)
 
 Sem segredo de longa duração: o workflow troca um token do GitHub por credencial
@@ -131,11 +138,25 @@ Azure. O `.github/workflows/deploy.yml` publica **depois que o CI passa no `main
 4. Faça um push no `main`; o workflow empacota com `git archive` e chama
    `az webapp deploy`. No fim ele espera o `/health` responder 200 por até 5 minutos.
 
-## 6. Backup e migração para PostgreSQL
+## 6. Backup, restauração e LGPD
 
 - O SQLite fica em `/home/data` (persistente entre reinícios e deploys). A cada start o
   script copia o arquivo para `/home/backups` e mantém os **7 últimos**.
 - Para baixar uma cópia: *Advanced Tools (Kudu)* → *Debug console* → `/home/backups`.
+- **Teste de restauração** (não toca no banco em uso; confere integridade, tabelas e
+  migrações):
+
+  ```bash
+  deploy/restore-test.sh /caminho/para/conciliador-20261025-030000.sqlite3
+  ```
+
+  Rode esse teste depois de cada mudança de schema e antes de confiar no backup. O CI
+  roda o mesmo script contra um banco recém-migrado.
+- **LGPD:** o titular exporta todos os dados em **Empresa → Exportar todos os dados
+  (JSON)** e exclui a conta em **Empresa → Excluir minha conta**. A exclusão apaga os
+  dados financeiros; os registros de acesso ficam sem vínculo com a empresa por 6 meses.
+- **MFA é obrigatório:** no primeiro acesso (inclusive do superusuário), o app pede a
+  ativação do TOTP antes de liberar o painel. Não há botão de desativar.
 - Para migrar para PostgreSQL: crie o servidor, defina `DATABASE_URL`, remova
   `SQLITE_PATH`, rode `migrate` e importe os dados com `dumpdata`/`loaddata` (ou
   `pgloader`). O schema é o mesmo.

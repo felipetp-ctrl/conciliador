@@ -69,10 +69,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "conciliador.middleware.ContentSecurityPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "conciliador.middleware.MFAEnrollmentMiddleware",
+    "conciliador.middleware.CompanySetupMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -81,6 +84,33 @@ if not DEBUG:
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Argon2 é o primeiro; os demais mantêm compatibilidade com hashes antigos.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+]
+
+# Sessão expira por inatividade (cada requisição renova o prazo).
+SESSION_COOKIE_AGE = int(os.environ.get("SESSION_COOKIE_AGE", str(8 * 60 * 60)))
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Cache do limite de tentativas. O piloto roda com um worker; com mais de um
+# processo, troque por um cache compartilhado (Redis ou banco) para o limite valer.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "conciliador",
+    }
+}
+
+# Contato exibido nas páginas de privacidade e termos (definir no deploy).
+LEGAL_CONTACT_EMAIL = os.environ.get("LEGAL_CONTACT_EMAIL", "").strip()
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "fechamento"

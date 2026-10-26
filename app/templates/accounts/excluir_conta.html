@@ -1,0 +1,26 @@
+{% extends "accounts/auth_card_base.html" %}{% load conciliador_ds %}
+{% block title %}Excluir conta — conciliador{% endblock %}
+{% block content %}
+<h1 class="page-header__title" style="font-size:22px">Excluir minha conta</h1>
+<p class="faint" style="margin:4px 0 20px">Esta ação apaga a conta e os dados das empresas das quais você é titular. Não dá para desfazer.</p>
+
+{% if error %}{% include "ds/alert.html" with tone="late" title="Não foi possível excluir" body=error %}{% endif %}
+
+<div class="alert" style="margin-bottom:16px"><div class="alert__body">
+  <div class="alert__title">O que será apagado</div>
+  <ul style="margin:8px 0 0 18px;padding:0">
+    {% for company in companies %}<li>{{ company.name }} — contas, lançamentos, documentos, vínculos e importações.</li>{% endfor %}
+  </ul>
+  <p style="margin:10px 0 0">Os registros de acesso (quem entrou, quando e de qual IP) são mantidos por 6 meses, sem conteúdo financeiro, como exige o Marco Civil da Internet.</p>
+</div></div>
+
+<p class="muted" style="font-size:13px;margin-bottom:16px">Antes de excluir, você pode <a href="{% url 'exportar_dados' %}">exportar todos os seus dados</a>.</p>
+
+<form class="stack" method="post">{% csrf_token %}
+  <div class="field"><label class="field__label" for="password">Sua senha</label><div class="field__control"><input class="field__input" id="password" name="password" type="password" autocomplete="current-password" required></div></div>
+  <div class="field"><label class="field__label" for="confirm">Digite <b>EXCLUIR</b> para confirmar</label><div class="field__control"><input class="field__input" id="confirm" name="confirm" autocomplete="off" required></div></div>
+  <button class="btn btn--primary" type="submit">Excluir conta e dados</button>
+</form>
+
+<p class="muted" style="font-size:13px;margin-top:20px"><a href="{% url 'empresa' %}">{% icon "arrow-left" 14 %}Voltar para Empresa</a></p>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "app/base_app.html" %}{% load conciliador_ds %}
+{% block title %}Auditoria{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div class="page-header__text">
+    <div class="micro" style="margin-bottom:14px">Segurança · {{ org.name }}</div>
+    <h1 class="page-header__title">Auditoria</h1>
+    <p class="page-header__lede">Quem entrou, importou, confirmou ou exportou — os últimos 200 registros.</p>
+  </div>
+</header>
+
+<section class="section" aria-labelledby="h-auditoria">
+  <div class="section__head"><h2 class="h2" id="h-auditoria">Registros</h2></div>
+  {% if registros %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Alvo</th><th>Detalhe</th></tr></thead>
+      <tbody>
+      {% for r in registros %}
+        <tr>
+          <td class="mono mono--12">{{ r.at|date:"d/m/Y H:i" }}</td>
+          <td>{{ r.who|default:"—" }}</td>
+          <td>{{ r.action }}</td>
+          <td class="mono mono--12">{{ r.target|default:"—" }}</td>
+          <td class="muted">{{ r.detail|default:"—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">Nenhum registro ainda.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -21,11 +21,12 @@
     {% if empresas|length > 1 %}
     <form class="stack" style="gap:6px" method="post" action="{% url 'trocar_empresa' %}">{% csrf_token %}
       <div class="micro">Trocar empresa</div>
-      <div class="select select--sm"><select name="company_id" onchange="this.form.submit()">{% for e in empresas %}<option value="{{ e.company_id }}" {% if e.company_id == conta_empresa_id %}selected{% endif %}>{{ e.company_name }}</option>{% endfor %}</select></div>
+      <div class="select select--sm"><select name="company_id" data-auto-submit>{% for e in empresas %}<option value="{{ e.company_id }}" {% if e.company_id == conta_empresa_id %}selected{% endif %}>{{ e.company_name }}</option>{% endfor %}</select></div>
     </form>
     {% endif %}
     {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'empresa' %}">{% icon "scale" 18 %}Empresa</a>{% endif %}
     {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'convites' %}">{% icon "pen-line" 18 %}Convidar contador</a>{% endif %}
+    {% if view == 'dono' %}<a class="sidebar__link" href="{% url 'auditoria' %}" {% if nav == 'auditoria' %}aria-current="page"{% endif %}>{% icon "clock" 18 %}Auditoria</a>{% endif %}
     <a class="sidebar__link" href="{% url 'mfa_setup' %}">{% icon "shield-check" 18 %}Segurança</a>
     <div class="sidebar__user"><b>{{ request.user.get_full_name }}</b>{% if view == 'contador' %}Contador · somente leitura{% else %}Titular da empresa{% endif %}</div>
     <form class="stack" style="margin-top:8px" method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn--ghost btn--sm" type="submit" style="width:100%">{% icon "x" 14 %}Sair</button></form>

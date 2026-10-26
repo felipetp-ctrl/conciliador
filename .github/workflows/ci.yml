@@ -40,6 +40,8 @@ jobs:
       - run: uv run pytest --cov=conciliador_core --cov-fail-under=90
       - run: uv run coverage run app/manage.py test ledger accounts
       - run: uv run coverage report --include='app/accounts/*,app/ledger/*' --omit='*/tests.py,*/migrations/*,*/management/*' --fail-under=80
+      - run: SQLITE_PATH="$RUNNER_TEMP/restore-source.sqlite3" uv run python app/manage.py migrate --noinput
+      - run: deploy/restore-test.sh "$RUNNER_TEMP/restore-source.sqlite3"
 
   bandit:
     name: Bandit

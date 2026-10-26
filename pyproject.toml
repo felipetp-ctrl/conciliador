@@ -18,6 +18,7 @@ dev = [
     "conciliador-synth",
     "django>=5.1,<6.0",
     "pyotp>=2.9,<3",
+    "argon2-cffi>=23.1,<26",
     "pytest",
     "pytest-cov",
     "hypothesis",

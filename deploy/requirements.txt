@@ -2,8 +2,14 @@
 #    uv export --package conciliador-app --format requirements-txt --no-hashes
 -e ./packages/conciliador-core
     # via conciliador-app
+argon2-cffi==25.1.0
+    # via conciliador-app
+argon2-cffi-bindings==26.1.0
+    # via argon2-cffi
 asgiref==3.13.0
     # via django
+cffi==2.1.1
+    # via argon2-cffi-bindings
 defusedxml==0.7.1
     # via
     #   conciliador-core
@@ -24,6 +30,8 @@ psycopg==3.3.6
     # via conciliador-app
 psycopg-binary==3.3.6 ; implementation_name != 'pypy'
     # via psycopg
+pycparser==3.12 ; implementation_name != 'PyPy'
+    # via cffi
 pyotp==2.10.0
     # via conciliador-app
 sqlparse==0.6.0
